@@ -122,7 +122,7 @@ export function Dashboard() {
 
   const categories = useMemo(
     () =>
-      [...new Set(tasks.map((t) => t.categoria).filter(Boolean) as string[])].sort(),
+      Array.from(new Set(tasks.map((t) => t.categoria).filter(Boolean) as string[])).sort(),
     [tasks],
   );
 
