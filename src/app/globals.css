@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Custom fonts ───────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ─── Base ───────────────────────────────────────────────────────────────────── */
+:root {
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #2d2d42;
+  --scrollbar-thumb-hover: #3d3d56;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: #0c0c14;
+  color: #f0f0ff;
+  min-height: 100vh;
+}
+
+/* ─── Custom scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ─── Focus rings ────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+/* ─── Transitions ────────────────────────────────────────────────────────────── */
+* {
+  transition-property: none;
+}
+
+/* Allow color/opacity/shadow transitions on interactive elements */
+button,
+a,
+input,
+select,
+textarea,
+[role='button'] {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+/* ─── Drag & drop overrides ──────────────────────────────────────────────────── */
+.is-dragging {
+  cursor: grabbing !important;
+}
+
+/* ─── Kanban column drop target highlight ────────────────────────────────────── */
+.drop-target-active {
+  border-color: #6366f1 !important;
+  background-color: rgba(99, 102, 241, 0.06) !important;
+}
+
+/* ─── Recharts overrides ─────────────────────────────────────────────────────── */
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+.recharts-default-tooltip {
+  background-color: #1a1a28 !important;
+  border: 1px solid #2a2a3d !important;
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+}
+.recharts-tooltip-label {
+  color: #8888a8 !important;
+  font-size: 11px !important;
+}
+.recharts-tooltip-item {
+  color: #f0f0ff !important;
+  font-size: 12px !important;
+}
