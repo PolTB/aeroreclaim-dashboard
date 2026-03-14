@@ -96,3 +96,27 @@ textarea,
   color: #f0f0ff !important;
   font-size: 12px !important;
 }
+
+/* Light mode support */
+html:not(.dark) {
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #e5e5e7;
+  --scrollbar-thumb-hover: #d5d5d7;
+}
+
+html:not(.dark) body {
+  background-color: #f5f5f7;
+  color: #1a1a2e;
+}
+
+html:not(.dark) {
+  color-scheme: light;
+}
+
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

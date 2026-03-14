@@ -127,3 +127,48 @@ export function getCategoryColor(cat: string | null): string {
   if (!cat) return '#555570';
   return CATEGORY_COLORS[cat] ?? '#6366f1';
 }
+
+// ─── Command types ─────────────────────────────────────────────────────────────
+
+export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual';
+export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Completado' | 'Error';
+export type CommandPrioridad = 'Alta' | 'Media' | 'Baja';
+
+export interface NotionCommand {
+  id: string;
+  titulo: string;
+  destinatario: CommandDestinatario | null;
+  prompt: string;
+  estado: CommandEstado;
+  respuesta: string;
+  prioridad: CommandPrioridad | null;
+  fechaCreacion: string | null;
+  fechaCompletado: string | null;
+  url: string;
+}
+
+export interface CreateCommandPayload {
+  titulo: string;
+  destinatario?: CommandDestinatario | null;
+  prompt: string;
+  prioridad?: CommandPrioridad | null;
+}
+
+export interface UpdateCommandPayload {
+  estado?: CommandEstado;
+  respuesta?: string;
+  fechaCompletado?: string | null;
+  destinatario?: CommandDestinatario | null;
+  prioridad?: CommandPrioridad | null;
+}
+
+export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [
+  'Claude CoWork', 'Claude Code', 'Claude Chat', 'Comet', 'ChatGPT', 'Manual'
+];
+
+export const COMMAND_ESTADO_CONFIG: Record<CommandEstado, { label: string; color: string; bg: string }> = {
+  'Pendiente':   { label: 'Pendiente',   color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
+  'En Proceso':  { label: 'En Proceso',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  'Completado':  { label: 'Completado',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  'Error':       { label: 'Error',       color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+};
