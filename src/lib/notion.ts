@@ -10,7 +10,7 @@ import type {
 
 // ─── Client singleton ─────────────────────────────────────────────────────────
 
-const notion = new Client({ auth: process.env.NOTION_API_KEY });
+const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const DB_ID = process.env.NOTION_DATABASE_ID!;
 
 // ─── Parsing helpers ──────────────────────────────────────────────────────────
