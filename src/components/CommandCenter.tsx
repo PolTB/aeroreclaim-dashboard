@@ -17,10 +17,11 @@ import { COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG } from '@/types';
 function EstadoBadge({ estado }: { estado: CommandEstado }) {
   const cfg = COMMAND_ESTADO_CONFIG[estado];
   const icons: Record<CommandEstado, React.ReactNode> = {
-    'Pendiente':  <Clock size={10} />,
-    'En Proceso': <Loader2 size={10} className="animate-spin" />,
-    'Completado': <Check size={10} />,
-    'Error':      <AlertTriangle size={10} />,
+    'Pendiente':            <Clock size={10} />,
+    'En Proceso':           <Loader2 size={10} className="animate-spin" />,
+    'Completado':           <Check size={10} />,
+    'Error':                <AlertTriangle size={10} />,
+    'Pendiente Revisión':   <AlertCircle size={10} />,
   };
   return (
     <span
@@ -471,7 +472,7 @@ export function CommandCenter() {
   const activeCommands = commands.filter(c => c.estado !== 'Completado' && c.estado !== 'Error');
   const historyCommands = commands.filter(c => c.estado === 'Completado' || c.estado === 'Error');
 
-  const estadoOrder: Record<CommandEstado, number> = { 'Pendiente': 0, 'En Proceso': 1, 'Completado': 2, 'Error': 3 };
+  const estadoOrder: Record<CommandEstado, number> = { 'Pendiente': 0, 'En Proceso': 1, 'Pendiente Revisión': 2, 'Completado': 3, 'Error': 4 };
   const sortedActive = [...activeCommands].sort((a, b) => estadoOrder[a.estado] - estadoOrder[b.estado]);
 
   if (loading) {
