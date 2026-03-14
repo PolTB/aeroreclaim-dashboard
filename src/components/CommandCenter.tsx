@@ -3,32 +3,38 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Terminal, Plus, Copy, CheckCircle2, Clock, AlertCircle, ChevronDown,
-  RefreshCw, Loader2, Check, Bot, Send, History, AlertTriangle
+  Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown,
+  RefreshCw, Loader2, Check, Bot, Send, History, AlertTriangle,
+  Inbox, Ban, ArrowLeftRight, X, MessageSquare
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { NotionCommand, CommandEstado, CommandDestinatario, CommandPrioridad, CreateCommandPayload } from '@/types';
-import { COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG } from '@/types';
+import {
+  COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG, COMMAND_ESTADO_ORDER,
+  ACTIVE_ESTADOS, ARCHIVED_ESTADOS
+} from '@/types';
 
 // ─── Estado badge ──────────────────────────────────────────────────────────────
 
+const ESTADO_ICONS: Record<CommandEstado, React.ReactNode> = {
+  'Pendiente':            <Clock size={10} />,
+  'En Proceso':           <Loader2 size={10} className="animate-spin" />,
+  'Respuesta Recibida':   <Inbox size={10} />,
+  'Completado':           <Check size={10} />,
+  'Bloqueado':            <AlertTriangle size={10} />,
+  'Cancelado':            <Ban size={10} />,
+};
+
 function EstadoBadge({ estado }: { estado: CommandEstado }) {
-  const cfg = COMMAND_ESTADO_CONFIG[estado];
-  const icons: Record<CommandEstado, React.ReactNode> = {
-    'Pendiente':            <Clock size={10} />,
-    'En Proceso':           <Loader2 size={10} className="animate-spin" />,
-    'Completado':           <Check size={10} />,
-    'Error':                <AlertTriangle size={10} />,
-    'Pendiente Revisión':   <AlertCircle size={10} />,
-  };
+  const cfg = COMMAND_ESTADO_CONFIG[estado] ?? COMMAND_ESTADO_CONFIG['Pendiente'];
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
       style={{ color: cfg.color, backgroundColor: cfg.bg }}
     >
-      {icons[estado]}
+      {ESTADO_ICONS[estado] ?? <Clock size={10} />}
       {cfg.label}
     </span>
   );
@@ -59,26 +65,94 @@ function DestBadge({ dest }: { dest: CommandDestinatario | null }) {
   );
 }
 
+// ─── Estado Selector (bidirectional) ────────────────────────────────────────────
+
+function EstadoSelector({
+  current,
+  onSelect,
+  disabled,
+}: {
+  current: CommandEstado;
+  onSelect: (estado: CommandEstado) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const allEstados = Object.keys(COMMAND_ESTADO_CONFIG) as CommandEstado[];
+  const otherEstados = allEstados.filter(e => e !== current);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        disabled={disabled}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] font-medium text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
+      >
+        <ArrowLeftRight size={11} />
+        Cambiar estado
+        <ChevronDown size={10} className={clsx('transition-transform', open && 'rotate-180')} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            transition={{ duration: 0.12 }}
+            className="absolute z-20 top-full mt-1 left-0 bg-surface-card border border-edge rounded-xl shadow-xl min-w-[200px] py-1 overflow-hidden"
+          >
+            {otherEstados.map(estado => {
+              const cfg = COMMAND_ESTADO_CONFIG[estado];
+              return (
+                <button
+                  key={estado}
+                  onClick={() => { onSelect(estado); setOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-elevated transition-colors"
+                >
+                  <span
+                    className="inline-flex items-center justify-center w-5 h-5 rounded-full"
+                    style={{ color: cfg.color, backgroundColor: cfg.bg }}
+                  >
+                    {ESTADO_ICONS[estado]}
+                  </span>
+                  <div>
+                    <p className="text-xs font-medium text-ink">{cfg.label}</p>
+                    <p className="text-[10px] text-ink-faint">{cfg.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ─── Command Card ──────────────────────────────────────────────────────────────
 
 interface CommandCardProps {
   command: NotionCommand;
   onUpdate: (id: string, updates: Partial<NotionCommand>) => Promise<void>;
   onCopyPrompt: (text: string) => void;
+  onDelete: (id: string) => void;
 }
 
-function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
+function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [respuesta, setRespuesta] = useState(command.respuesta);
+  const [subchat, setSubchat] = useState(command.subchat || '');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  async function markEstado(estado: CommandEstado) {
+  async function changeEstado(estado: CommandEstado) {
     setSaving(true);
     try {
       const updates: Partial<NotionCommand> = { estado };
       if (estado === 'Completado') {
         updates.fechaCompletado = new Date().toISOString().split('T')[0];
+      }
+      if (estado === 'Pendiente') {
+        updates.fechaCompletado = null;
       }
       await onUpdate(command.id, updates);
     } finally {
@@ -89,7 +163,19 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
   async function saveRespuesta() {
     setSaving(true);
     try {
-      await onUpdate(command.id, { respuesta, estado: 'Completado', fechaCompletado: new Date().toISOString().split('T')[0] });
+      await onUpdate(command.id, {
+        respuesta,
+        estado: 'Respuesta Recibida',
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSubchat() {
+    setSaving(true);
+    try {
+      await onUpdate(command.id, { subchat });
     } finally {
       setSaving(false);
     }
@@ -101,7 +187,8 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const isCompleted = command.estado === 'Completado';
+  const isArchived = ARCHIVED_ESTADOS.includes(command.estado);
+  const showRespuestaInput = !isArchived && command.estado !== 'Cancelado';
 
   return (
     <motion.div
@@ -110,9 +197,13 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
       animate={{ opacity: 1, y: 0 }}
       className={clsx(
         'rounded-xl border transition-all',
-        isCompleted
+        isArchived
           ? 'bg-surface-card/50 border-edge/30 opacity-70'
-          : 'bg-surface-card border-edge/60 hover:border-edge-bright'
+          : command.estado === 'Bloqueado'
+            ? 'bg-surface-card border-orange-500/30'
+            : command.estado === 'Respuesta Recibida'
+              ? 'bg-surface-card border-yellow-500/30'
+              : 'bg-surface-card border-edge/60 hover:border-edge-bright'
       )}
     >
       {/* Header */}
@@ -123,7 +214,7 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
         <Terminal size={14} className="mt-0.5 shrink-0 text-accent" />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 flex-wrap">
-            <p className={clsx('text-sm font-medium', isCompleted ? 'text-ink-muted line-through' : 'text-ink')}>
+            <p className={clsx('text-sm font-medium', isArchived ? 'text-ink-muted line-through' : 'text-ink')}>
               {command.titulo}
             </p>
             <EstadoBadge estado={command.estado} />
@@ -131,13 +222,24 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <DestBadge dest={command.destinatario} />
             {command.prioridad && (
-              <span className="text-[10px] text-ink-muted">
-                Prioridad: {command.prioridad}
+              <span className={clsx(
+                'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                command.prioridad === 'Alta' ? 'text-red-400 bg-red-500/10' :
+                command.prioridad === 'Baja' ? 'text-green-400 bg-green-500/10' :
+                'text-ink-muted'
+              )}>
+                {command.prioridad}
               </span>
             )}
             {command.fechaCreacion && (
               <span className="text-[10px] text-ink-faint">
                 {format(parseISO(command.fechaCreacion), 'd MMM', { locale: es })}
+              </span>
+            )}
+            {command.subchat && (
+              <span className="text-[10px] text-ink-faint flex items-center gap-0.5">
+                <MessageSquare size={9} />
+                {command.subchat}
               </span>
             )}
           </div>
@@ -181,8 +283,32 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
                 </pre>
               </div>
 
-              {/* Respuesta */}
-              {!isCompleted && (
+              {/* Subchat field */}
+              <div>
+                <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">
+                  Subchat / Referencia
+                </span>
+                <div className="flex gap-2">
+                  <input
+                    value={subchat}
+                    onChange={e => setSubchat(e.target.value)}
+                    placeholder="Nombre del chat donde enviaste el prompt..."
+                    className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+                  />
+                  {subchat !== (command.subchat || '') && (
+                    <button
+                      onClick={saveSubchat}
+                      disabled={saving}
+                      className="px-2.5 py-1.5 bg-accent/15 text-accent text-[10px] font-medium rounded-lg hover:bg-accent/25 transition-colors disabled:opacity-50"
+                    >
+                      Guardar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Respuesta input/display */}
+              {showRespuestaInput && (
                 <div>
                   <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">
                     Respuesta del agente
@@ -194,9 +320,19 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
                     className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint resize-none focus:outline-none focus:border-accent/60 min-h-[80px]"
                     rows={4}
                   />
+                  {respuesta !== command.respuesta && respuesta.trim() && (
+                    <button
+                      onClick={saveRespuesta}
+                      disabled={saving}
+                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/15 text-yellow-500 text-xs font-medium rounded-lg hover:bg-yellow-500/25 transition-colors disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 size={11} className="animate-spin" /> : <Inbox size={11} />}
+                      Guardar respuesta
+                    </button>
+                  )}
                 </div>
               )}
-              {isCompleted && command.respuesta && (
+              {isArchived && command.respuesta && (
                 <div>
                   <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">Respuesta</span>
                   <pre className="text-xs text-ink-secondary bg-surface-elevated rounded-lg p-3 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
@@ -210,48 +346,56 @@ function CommandCard({ command, onUpdate, onCopyPrompt }: CommandCardProps) {
                 </div>
               )}
 
-              {/* Actions */}
-              {!isCompleted && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  {command.estado === 'Pendiente' && (
-                    <button
-                      onClick={() => markEstado('En Proceso')}
-                      disabled={saving}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-warn/15 text-warn text-xs font-medium rounded-lg hover:bg-warn/25 transition-colors disabled:opacity-50"
-                    >
-                      <Loader2 size={11} />
-                      En Proceso
-                    </button>
-                  )}
-                  {respuesta.trim() ? (
-                    <button
-                      onClick={saveRespuesta}
-                      disabled={saving}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-success/15 text-success text-xs font-medium rounded-lg hover:bg-success/25 transition-colors disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-                      Guardar respuesta y completar
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => markEstado('Completado')}
-                      disabled={saving}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-success/15 text-success text-xs font-medium rounded-lg hover:bg-success/25 transition-colors disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-                      Marcar completado
-                    </button>
-                  )}
+              {/* Actions row */}
+              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-edge/20">
+                {/* Estado selector — always available, bidirectional */}
+                <EstadoSelector
+                  current={command.estado}
+                  onSelect={changeEstado}
+                  disabled={saving}
+                />
+
+                {/* Quick actions based on current estado */}
+                {command.estado === 'Pendiente' && (
                   <button
-                    onClick={() => markEstado('Error')}
+                    onClick={() => changeEstado('En Proceso')}
                     disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-danger/10 text-danger text-xs font-medium rounded-lg hover:bg-danger/20 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/15 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/25 transition-colors disabled:opacity-50"
                   >
-                    <AlertTriangle size={11} />
-                    Error
+                    <Send size={11} />
+                    Marcar enviado
                   </button>
-                </div>
-              )}
+                )}
+                {command.estado === 'Respuesta Recibida' && (
+                  <button
+                    onClick={() => changeEstado('Completado')}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/15 text-green-400 text-xs font-medium rounded-lg hover:bg-green-500/25 transition-colors disabled:opacity-50"
+                  >
+                    <Check size={11} />
+                    Aprobar y completar
+                  </button>
+                )}
+                {command.estado === 'Bloqueado' && (
+                  <button
+                    onClick={() => changeEstado('Pendiente')}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-500/15 text-gray-400 text-xs font-medium rounded-lg hover:bg-gray-500/25 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={11} />
+                    Replantear
+                  </button>
+                )}
+
+                {/* Cancel/delete */}
+                <button
+                  onClick={() => onDelete(command.id)}
+                  className="ml-auto flex items-center gap-1 px-2 py-1.5 text-[10px] text-ink-faint hover:text-red-400 transition-colors"
+                >
+                  <X size={10} />
+                  Cancelar
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -399,19 +543,8 @@ function SetupBanner() {
         <h3 className="text-sm font-semibold text-ink">Setup requerido: Base de datos de Commands</h3>
       </div>
       <p className="text-xs text-ink-muted leading-relaxed">
-        La variable <code className="bg-surface-elevated px-1 py-0.5 rounded text-accent font-mono">COMMANDS_DATABASE_ID</code> no está configurada.
-        Crea la base de datos en Notion y añade el ID a las variables de entorno.
+        La variable <code className="bg-surface-elevated px-1 py-0.5 rounded text-accent font-mono">COMMANDS_DATABASE_ID</code> no está configurada en Vercel.
       </p>
-      <div className="bg-surface-elevated rounded-lg p-3">
-        <p className="text-xs font-semibold text-ink-secondary mb-2">Pasos para crear la DB en Notion:</p>
-        <ol className="text-xs text-ink-muted space-y-1 list-decimal list-inside">
-          <li>Ve a Notion → crea una nueva página llamada <strong className="text-ink-secondary">AeroReclaim — Commands</strong></li>
-          <li>Añade un bloque de tipo <strong className="text-ink-secondary">Database (full page)</strong></li>
-          <li>Crea estas propiedades: <code className="font-mono text-accent">Titulo</code> (Title), <code className="font-mono text-accent">Destinatario</code> (Select), <code className="font-mono text-accent">Prompt</code> (Text), <code className="font-mono text-accent">Estado</code> (Select), <code className="font-mono text-accent">Respuesta</code> (Text), <code className="font-mono text-accent">Prioridad</code> (Select), <code className="font-mono text-accent">Fecha_Creacion</code> (Date), <code className="font-mono text-accent">Fecha_Completado</code> (Date)</li>
-          <li>Conecta la integración AeroReclaim Dashboard (··· → Connections)</li>
-          <li>Copia el ID de la URL y añádelo como <code className="font-mono text-accent">COMMANDS_DATABASE_ID</code> en Vercel y en .env.local</li>
-        </ol>
-      </div>
     </div>
   );
 }
@@ -463,17 +596,28 @@ export function CommandCenter() {
     }
   }, [fetchCommands]);
 
+  const cancelCommand = useCallback(async (id: string) => {
+    await updateCommand(id, { estado: 'Cancelado' as CommandEstado });
+  }, [updateCommand]);
+
   function handleCopyPrompt(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
     setCopiedToast(true);
     setTimeout(() => setCopiedToast(false), 2500);
   }
 
-  const activeCommands = commands.filter(c => c.estado !== 'Completado' && c.estado !== 'Error');
-  const historyCommands = commands.filter(c => c.estado === 'Completado' || c.estado === 'Error');
+  const activeCommands = commands.filter(c => ACTIVE_ESTADOS.includes(c.estado));
+  const historyCommands = commands.filter(c => ARCHIVED_ESTADOS.includes(c.estado));
 
-  const estadoOrder: Record<CommandEstado, number> = { 'Pendiente': 0, 'En Proceso': 1, 'Pendiente Revisión': 2, 'Completado': 3, 'Error': 4 };
-  const sortedActive = [...activeCommands].sort((a, b) => estadoOrder[a.estado] - estadoOrder[b.estado]);
+  const sortedActive = [...activeCommands].sort((a, b) =>
+    COMMAND_ESTADO_ORDER[a.estado] - COMMAND_ESTADO_ORDER[b.estado]
+  );
+
+  // Count by estado
+  const counts = activeCommands.reduce((acc, c) => {
+    acc[c.estado] = (acc[c.estado] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   if (loading) {
     return (
@@ -492,9 +636,18 @@ export function CommandCenter() {
             <Terminal size={15} className="text-accent" />
             Command Center
           </h2>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Cola de prompts para agentes IA
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            {Object.entries(counts).map(([estado, count]) => {
+              const cfg = COMMAND_ESTADO_CONFIG[estado as CommandEstado];
+              if (!cfg) return null;
+              return (
+                <span key={estado} className="text-[10px] flex items-center gap-1" style={{ color: cfg.color }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
+                  {count} {cfg.label.toLowerCase()}
+                </span>
+              );
+            })}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -509,7 +662,7 @@ export function CommandCenter() {
             className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-xl transition-colors shadow-sm"
           >
             <Plus size={12} />
-            Nuevo Command
+            Nuevo
           </button>
         </div>
       </div>
@@ -526,10 +679,8 @@ export function CommandCenter() {
         </div>
       )}
 
-      {/* Setup banner */}
       {needsSetup && <SetupBanner />}
 
-      {/* Active queue */}
       {!needsSetup && (
         <>
           <div className="flex flex-col gap-3">
@@ -546,12 +697,12 @@ export function CommandCenter() {
                   command={cmd}
                   onUpdate={updateCommand}
                   onCopyPrompt={handleCopyPrompt}
+                  onDelete={cancelCommand}
                 />
               ))
             )}
           </div>
 
-          {/* History section */}
           {historyCommands.length > 0 && (
             <div className="border-t border-edge/30 pt-4">
               <button
@@ -576,6 +727,7 @@ export function CommandCenter() {
                         command={cmd}
                         onUpdate={updateCommand}
                         onCopyPrompt={handleCopyPrompt}
+                        onDelete={cancelCommand}
                       />
                     ))}
                   </motion.div>
@@ -586,7 +738,6 @@ export function CommandCenter() {
         </>
       )}
 
-      {/* Create modal */}
       {isCreateOpen && (
         <CreateCommandModal
           onClose={() => setIsCreateOpen(false)}
@@ -594,7 +745,6 @@ export function CommandCenter() {
         />
       )}
 
-      {/* Copy toast */}
       <AnimatePresence>
         {copiedToast && (
           <motion.div

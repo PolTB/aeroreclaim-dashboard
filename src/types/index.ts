@@ -131,7 +131,7 @@ export function getCategoryColor(cat: string | null): string {
 // ─── Command types ─────────────────────────────────────────────────────────────
 
 export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual';
-export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Completado' | 'Error' | 'Pendiente Revisión';
+export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Respuesta Recibida' | 'Completado' | 'Bloqueado' | 'Cancelado';
 export type CommandPrioridad = 'Alta' | 'Media' | 'Baja';
 
 export interface NotionCommand {
@@ -144,6 +144,7 @@ export interface NotionCommand {
   prioridad: CommandPrioridad | null;
   fechaCreacion: string | null;
   fechaCompletado: string | null;
+  subchat: string;
   url: string;
 }
 
@@ -160,16 +161,34 @@ export interface UpdateCommandPayload {
   fechaCompletado?: string | null;
   destinatario?: CommandDestinatario | null;
   prioridad?: CommandPrioridad | null;
+  subchat?: string;
 }
 
 export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [
   'Claude CoWork', 'Claude Code', 'Claude Chat', 'Comet', 'ChatGPT', 'Manual'
 ];
 
-export const COMMAND_ESTADO_CONFIG: Record<CommandEstado, { label: string; color: string; bg: string }> = {
-  'Pendiente':            { label: 'Pendiente',            color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
-  'En Proceso':           { label: 'En Proceso',           color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-  'Completado':           { label: 'Completado',           color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
-  'Error':                { label: 'Error',                color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-  'Pendiente Revisión':   { label: 'Pendiente Revisión',   color: '#eab308', bg: 'rgba(234,179,8,0.12)' },
+export const COMMAND_ESTADO_CONFIG: Record<CommandEstado, { label: string; color: string; bg: string; description: string }> = {
+  'Pendiente':            { label: 'Pendiente',            color: '#6b7280', bg: 'rgba(107,114,128,0.12)', description: 'Listo para enviar al agente' },
+  'En Proceso':           { label: 'En Proceso',           color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  description: 'Enviado al agente, esperando respuesta' },
+  'Respuesta Recibida':   { label: 'Respuesta Recibida',   color: '#eab308', bg: 'rgba(234,179,8,0.12)',   description: 'El agente respondió, pendiente de revisar' },
+  'Completado':           { label: 'Completado',           color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   description: 'Tarea finalizada con éxito' },
+  'Bloqueado':            { label: 'Bloqueado',            color: '#f97316', bg: 'rgba(249,115,22,0.12)',  description: 'El agente no pudo, hay que replantear' },
+  'Cancelado':            { label: 'Cancelado',            color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   description: 'Descartado, ya no se necesita' },
 };
+
+/** Valid state transitions — any state can go to any state (bidirectional) */
+export const COMMAND_ESTADO_ORDER: Record<CommandEstado, number> = {
+  'Pendiente': 0,
+  'En Proceso': 1,
+  'Respuesta Recibida': 2,
+  'Bloqueado': 3,
+  'Completado': 4,
+  'Cancelado': 5,
+};
+
+/** States that count as "active" (shown in main queue) */
+export const ACTIVE_ESTADOS: CommandEstado[] = ['Pendiente', 'En Proceso', 'Respuesta Recibida', 'Bloqueado'];
+
+/** States that count as "archived" (shown in history) */
+export const ARCHIVED_ESTADOS: CommandEstado[] = ['Completado', 'Cancelado'];

@@ -36,6 +36,7 @@ function parseNotionCommand(page: PageObjectResponse): NotionCommand {
     prioridad: getSelect(props, 'Prioridad') as CommandPrioridad | null,
     fechaCreacion: getDate(props, 'Fecha_Creacion'),
     fechaCompletado: getDate(props, 'Fecha_Completado'),
+    subchat: getRichText(props, 'Subchat'),
     url: page.url,
   };
 }
@@ -85,5 +86,6 @@ export async function updateCommand(id: string, updates: UpdateCommandPayload): 
   }
   if (updates.destinatario !== undefined) properties['Destinatario'] = updates.destinatario ? { select: { name: updates.destinatario } } : { select: null };
   if (updates.prioridad !== undefined) properties['Prioridad'] = updates.prioridad ? { select: { name: updates.prioridad } } : { select: null };
+  if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: [{ text: { content: updates.subchat } }] };
   await notion.pages.update({ page_id: id, properties });
 }
