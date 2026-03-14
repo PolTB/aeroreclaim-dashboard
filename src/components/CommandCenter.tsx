@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown,
@@ -77,11 +77,21 @@ function EstadoSelector({
   disabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const allEstados = Object.keys(COMMAND_ESTADO_CONFIG) as CommandEstado[];
   const otherEstados = allEstados.filter(e => e !== current);
 
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(v => !v)}
         disabled={disabled}
@@ -94,11 +104,11 @@ function EstadoSelector({
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+            initial={{ opacity: 0, y: 4, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            exit={{ opacity: 0, y: 4, scale: 0.95 }}
             transition={{ duration: 0.12 }}
-            className="absolute z-20 top-full mt-1 left-0 bg-surface-card border border-edge rounded-xl shadow-xl min-w-[200px] py-1 overflow-hidden"
+            className="absolute z-50 bottom-full mb-1 left-0 bg-surface-card border border-edge rounded-xl shadow-xl min-w-[200px] py-1 overflow-hidden"
           >
             {otherEstados.map(estado => {
               const cfg = COMMAND_ESTADO_CONFIG[estado];
@@ -254,11 +264,10 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
       <AnimatePresence>
         {expanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
           >
             <div className="px-3.5 pb-3.5 pt-0 flex flex-col gap-3 border-t border-edge/30">
               {/* Prompt */}
