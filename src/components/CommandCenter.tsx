@@ -153,6 +153,7 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
   const [subchat, setSubchat] = useState(command.subchat || '');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function changeEstado(estado: CommandEstado) {
     setSaving(true);
@@ -172,11 +173,14 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
 
   async function saveRespuesta() {
     setSaving(true);
+    setSaveError(null);
     try {
       await onUpdate(command.id, {
         respuesta,
         estado: 'Respuesta Recibida',
       });
+    } catch {
+      setSaveError('Error al guardar. Intenta de nuevo.');
     } finally {
       setSaving(false);
     }
@@ -184,8 +188,11 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
 
   async function saveSubchat() {
     setSaving(true);
+    setSaveError(null);
     try {
       await onUpdate(command.id, { subchat });
+    } catch {
+      setSaveError('Error al guardar subchat.');
     } finally {
       setSaving(false);
     }
@@ -338,6 +345,11 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
                       {saving ? <Loader2 size={11} className="animate-spin" /> : <Inbox size={11} />}
                       Guardar respuesta
                     </button>
+                  )}
+                  {saveError && (
+                    <p className="mt-1.5 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1.5">
+                      {saveError}
+                    </p>
                   )}
                 </div>
               )}

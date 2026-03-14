@@ -76,16 +76,27 @@ export async function createCommand(payload: CreateCommandPayload): Promise<void
   await notion.pages.create({ parent: { database_id: DB_ID }, properties });
 }
 
+/** Split text into 2000-char chunks for Notion rich_text blocks */
+function toRichTextBlocks(text: string) {
+  const MAX = 2000;
+  if (text.length <= MAX) return [{ text: { content: text } }];
+  const blocks = [];
+  for (let i = 0; i < text.length; i += MAX) {
+    blocks.push({ text: { content: text.slice(i, i + MAX) } });
+  }
+  return blocks;
+}
+
 export async function updateCommand(id: string, updates: UpdateCommandPayload): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const properties: any = {};
   if (updates.estado !== undefined) properties['Estado'] = { select: { name: updates.estado } };
-  if (updates.respuesta !== undefined) properties['Respuesta'] = { rich_text: [{ text: { content: updates.respuesta } }] };
+  if (updates.respuesta !== undefined) properties['Respuesta'] = { rich_text: toRichTextBlocks(updates.respuesta) };
   if (updates.fechaCompletado !== undefined) {
     properties['Fecha_Completado'] = updates.fechaCompletado ? { date: { start: updates.fechaCompletado } } : { date: null };
   }
   if (updates.destinatario !== undefined) properties['Destinatario'] = updates.destinatario ? { select: { name: updates.destinatario } } : { select: null };
   if (updates.prioridad !== undefined) properties['Prioridad'] = updates.prioridad ? { select: { name: updates.prioridad } } : { select: null };
-  if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: [{ text: { content: updates.subchat } }] };
+  if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: toRichTextBlocks(updates.subchat) };
   await notion.pages.update({ page_id: id, properties });
 }
