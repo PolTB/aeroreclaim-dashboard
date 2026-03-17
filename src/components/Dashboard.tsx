@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutGrid, BarChart2, Terminal, Settings, RefreshCw, Plus,
-  AlertCircle, Loader2, ChevronRight, Sun, Moon,
+  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -18,13 +18,15 @@ import { CreateTaskModal } from './CreateTaskModal';
 import { CommandCenter } from './CommandCenter';
 import { AgentStatusPanel } from './AgentStatusPanel';
 import { QuickInbox } from './QuickInbox';
+import { CaseTracker } from './CaseTracker';
 
-type ViewMode = 'kanban' | 'timeline' | 'commands' | 'settings';
+type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'settings';
 
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
   { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
   { id: 'timeline',  label: 'Timeline',  shortLabel: 'Timeline',  icon: <BarChart2 size={13} /> },
   { id: 'commands',  label: 'Commands',  shortLabel: 'Cmds',      icon: <Terminal size={13} /> },
+  { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
   { id: 'settings',  label: 'Settings',  shortLabel: 'Config',    icon: <Settings size={13} /> },
 ];
 
@@ -54,6 +56,12 @@ function SettingsPanel({ isDark, onToggle }: { isDark: boolean; onToggle: () => 
         </p>
         <p className="text-xs text-ink-muted mt-1">
           DB Commands: configurar <code className="font-mono text-accent bg-surface-elevated px-1 rounded">COMMANDS_DATABASE_ID</code> en Vercel
+        </p>
+        <p className="text-xs text-ink-muted mt-1">
+          Auth: <code className="font-mono text-accent bg-surface-elevated px-1 rounded">BASIC_AUTH_USER</code> / <code className="font-mono text-accent bg-surface-elevated px-1 rounded">BASIC_AUTH_PASSWORD</code>
+        </p>
+        <p className="text-xs text-ink-muted mt-1">
+          Google Sheets (Cases): <code className="font-mono text-accent bg-surface-elevated px-1 rounded">GOOGLE_SHEETS_SPREADSHEET_ID</code> + <code className="font-mono text-accent bg-surface-elevated px-1 rounded">GOOGLE_SHEETS_API_KEY</code>
         </p>
       </div>
     </div>
@@ -176,6 +184,7 @@ export function Dashboard() {
   );
 
   const showTaskViews = view === 'kanban' || view === 'timeline';
+  const showFullWidth = view === 'commands' || view === 'cases' || view === 'settings';
 
   if (loading) {
     return (
@@ -276,19 +285,24 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Commands / Settings: full width */}
-        {view === 'commands' && (
+        {/* Commands / Cases / Settings: full width */}
+        {showFullWidth && (
           <AnimatePresence mode="wait">
-            <motion.div key="commands" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <CommandCenter />
-            </motion.div>
-          </AnimatePresence>
-        )}
-        {view === 'settings' && (
-          <AnimatePresence mode="wait">
-            <motion.div key="settings" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <SettingsPanel isDark={isDark} onToggle={toggleTheme} />
-            </motion.div>
+            {view === 'commands' && (
+              <motion.div key="commands" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <CommandCenter />
+              </motion.div>
+            )}
+            {view === 'cases' && (
+              <motion.div key="cases" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <CaseTracker />
+              </motion.div>
+            )}
+            {view === 'settings' && (
+              <motion.div key="settings" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <SettingsPanel isDark={isDark} onToggle={toggleTheme} />
+              </motion.div>
+            )}
           </AnimatePresence>
         )}
 

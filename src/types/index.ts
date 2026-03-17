@@ -138,19 +138,20 @@ export interface NotionCommand {
   id: string;
   titulo: string;
   destinatario: CommandDestinatario | null;
+  subchat: string;
   prompt: string;
   estado: CommandEstado;
   respuesta: string;
   prioridad: CommandPrioridad | null;
   fechaCreacion: string | null;
   fechaCompletado: string | null;
-  subchat: string;
   url: string;
 }
 
 export interface CreateCommandPayload {
   titulo: string;
   destinatario?: CommandDestinatario | null;
+  subchat?: string;
   prompt: string;
   prioridad?: CommandPrioridad | null;
 }
@@ -158,10 +159,10 @@ export interface CreateCommandPayload {
 export interface UpdateCommandPayload {
   estado?: CommandEstado;
   respuesta?: string;
+  subchat?: string;
   fechaCompletado?: string | null;
   destinatario?: CommandDestinatario | null;
   prioridad?: CommandPrioridad | null;
-  subchat?: string;
 }
 
 export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [
@@ -192,3 +193,40 @@ export const ACTIVE_ESTADOS: CommandEstado[] = ['Pendiente', 'En Proceso', 'Resp
 
 /** States that count as "archived" (shown in history) */
 export const ARCHIVED_ESTADOS: CommandEstado[] = ['Completado', 'Cancelado'];
+
+// ─── Case Tracker types ────────────────────────────────────────────────────────
+
+export const PIPELINE_STAGES = [
+  'Lead',
+  'Aprobado',
+  'Docs Recibidos',
+  'Extrajudicial',
+  'Respuesta Aerolínea',
+  'AESA',
+  'Cobro',
+  'Cerrado',
+] as const;
+
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+export type StageStatus = 'completada' | 'activa' | 'pendiente';
+
+export interface StageInfo {
+  estado: StageStatus;
+  fecha: string | null;
+  confirmacionAgente: boolean;
+  confirmacionManual: boolean;
+}
+
+export interface AeroCaso {
+  id: string;
+  pasajero: string;
+  vuelo: string;
+  ruta: string;
+  fecha: string;
+  compensacion: number;
+  scoreLegal: number;
+  estadoActual: PipelineStage;
+  ultimaActualizacion: string;
+  pipeline: Record<PipelineStage, StageInfo>;
+  notaInterna?: string;
+}
