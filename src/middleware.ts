@@ -14,14 +14,6 @@ export function middleware(req: NextRequest) {
     const expectedUser = (process.env.BASIC_AUTH_USER || '').trim();
     const expectedPwd = (process.env.BASIC_AUTH_PASSWORD || '').trim();
 
-    // Debug log (remove after verifying it works)
-    console.log('[middleware] auth attempt:', {
-      user,
-      envUserSet: !!expectedUser,
-      envPwdSet: !!expectedPwd,
-      match: user === expectedUser && pwd === expectedPwd,
-    });
-
     if (expectedUser && expectedPwd && user === expectedUser && pwd === expectedPwd) {
       return NextResponse.next();
     }
