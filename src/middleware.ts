@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export function middleware(req: NextRequest) {
-  const basicAuth = req.headers.get('authorization');
+  const authHeader = req.headers.get('authorization');
 
-  if (basicAuth) {
-    const authValue = basicAuth.split(' ')[1];
-    const [user, pwd] = atob(authValue).split(':');
+  if (authHeader && authHeader.startsWith('Basic ')) {
+    const base64 = authHeader.slice(6);
+    const decoded = atob(base64);
+    // Split only on FIRST ':' — password may contain ':'
+    const colonIndex = decoded.indexOf(':');
+    const user = decoded.substring(0, colonIndex).trim();
+    const pwd = decoded.substring(colonIndex + 1).trim();
 
-    if (
-      user === process.env.BASIC_AUTH_USER &&
-      pwd === process.env.BASIC_AUTH_PASSWORD
-    ) {
+    const expectedUser = (process.env.BASIC_AUTH_USER || '').trim();
+    const expectedPwd = (process.env.BASIC_AUTH_PASSWORD || '').trim();
+
+    // Debug log (remove after verifying it works)
+    console.log('[middleware] auth attempt:', {
+      user,
+      envUserSet: !!expectedUser,
+      envPwdSet: !!expectedPwd,
+      match: user === expectedUser && pwd === expectedPwd,
+    });
+
+    if (expectedUser && expectedPwd && user === expectedUser && pwd === expectedPwd) {
       return NextResponse.next();
     }
   }
