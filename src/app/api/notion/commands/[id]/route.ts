@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateCommand } from '@/lib/notionCommands';
+import { updateCommand, archiveCommand } from '@/lib/notionCommands';
 import type { UpdateCommandPayload } from '@/types';
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
@@ -10,5 +10,15 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   } catch (err) {
     console.error('[PATCH /api/notion/commands/[id]]', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to update command' }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  try {
+    await archiveCommand(params.id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/notion/commands/[id]]', err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to delete command' }, { status: 500 });
   }
 }

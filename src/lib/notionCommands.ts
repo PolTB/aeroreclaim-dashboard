@@ -30,13 +30,13 @@ function parseNotionCommand(page: PageObjectResponse): NotionCommand {
     id: page.id,
     titulo: getTitle(props, 'Titulo'),
     destinatario: getSelect(props, 'Destinatario') as CommandDestinatario | null,
+    subchat: getRichText(props, 'Subchat'),
     prompt: getRichText(props, 'Prompt'),
     estado: (getSelect(props, 'Estado') ?? 'Pendiente') as CommandEstado,
     respuesta: getRichText(props, 'Respuesta'),
     prioridad: getSelect(props, 'Prioridad') as CommandPrioridad | null,
     fechaCreacion: getDate(props, 'Fecha_Creacion'),
     fechaCompletado: getDate(props, 'Fecha_Completado'),
-    subchat: getRichText(props, 'Subchat'),
     url: page.url,
   };
 }
@@ -71,6 +71,7 @@ export async function createCommand(payload: CreateCommandPayload): Promise<void
     Fecha_Creacion: { date: { start: new Date().toISOString().split('T')[0] } },
   };
   if (payload.destinatario) properties['Destinatario'] = { select: { name: payload.destinatario } };
+  if (payload.subchat) properties['Subchat'] = { rich_text: [{ text: { content: payload.subchat } }] };
   if (payload.prioridad) properties['Prioridad'] = { select: { name: payload.prioridad } };
 
   await notion.pages.create({ parent: { database_id: DB_ID }, properties });
@@ -95,8 +96,12 @@ export async function updateCommand(id: string, updates: UpdateCommandPayload): 
   if (updates.fechaCompletado !== undefined) {
     properties['Fecha_Completado'] = updates.fechaCompletado ? { date: { start: updates.fechaCompletado } } : { date: null };
   }
+  if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: toRichTextBlocks(updates.subchat) };
   if (updates.destinatario !== undefined) properties['Destinatario'] = updates.destinatario ? { select: { name: updates.destinatario } } : { select: null };
   if (updates.prioridad !== undefined) properties['Prioridad'] = updates.prioridad ? { select: { name: updates.prioridad } } : { select: null };
-  if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: toRichTextBlocks(updates.subchat) };
   await notion.pages.update({ page_id: id, properties });
+}
+
+export async function archiveCommand(id: string): Promise<void> {
+  await notion.pages.update({ page_id: id, archived: true });
 }

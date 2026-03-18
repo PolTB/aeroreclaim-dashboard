@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown,
   RefreshCw, Loader2, Check, Bot, Send, History, AlertTriangle,
-  Inbox, Ban, ArrowLeftRight, X, MessageSquare
+  Inbox, Ban, ArrowLeftRight, X, MessageSquare, Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
@@ -36,31 +36,6 @@ function EstadoBadge({ estado }: { estado: CommandEstado }) {
     >
       {ESTADO_ICONS[estado] ?? <Clock size={10} />}
       {cfg.label}
-    </span>
-  );
-}
-
-// ─── Destinatario badge ────────────────────────────────────────────────────────
-
-const DEST_COLORS: Record<string, string> = {
-  'Claude CoWork': '#8b5cf6',
-  'Claude Code':   '#3b82f6',
-  'Claude Chat':   '#6366f1',
-  'Comet':         '#ec4899',
-  'ChatGPT':       '#10b981',
-  'Manual':        '#6b7280',
-};
-
-function DestBadge({ dest }: { dest: CommandDestinatario | null }) {
-  if (!dest) return null;
-  const color = DEST_COLORS[dest] ?? '#6b7280';
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
-      style={{ color, backgroundColor: color + '20' }}
-    >
-      <Bot size={10} />
-      {dest}
     </span>
   );
 }
@@ -138,16 +113,80 @@ function EstadoSelector({
   );
 }
 
-// ─── Command Card ──────────────────────────────────────────────────────────────
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+
+interface ConfirmDialogProps {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-surface-card border border-edge rounded-xl shadow-2xl p-5 max-w-sm w-full"
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
+          <p className="text-sm text-ink">{message}</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-xs text-ink-muted hover:text-ink rounded-lg transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 bg-danger/15 text-danger text-xs font-medium rounded-lg hover:bg-danger/25 transition-colors"
+          >
+            Eliminar
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── Destinatario badge ────────────────────────────────────────────────────────
+
+const DEST_COLORS: Record<string, string> = {
+  'Claude CoWork': '#8b5cf6',
+  'Claude Code':   '#3b82f6',
+  'Claude Chat':   '#6366f1',
+  'Comet':         '#ec4899',
+  'ChatGPT':       '#10b981',
+  'Manual':        '#6b7280',
+};
+
+function DestBadge({ dest }: { dest: CommandDestinatario | null }) {
+  if (!dest) return null;
+  const color = DEST_COLORS[dest] ?? '#6b7280';
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+      style={{ color, backgroundColor: color + '20' }}
+    >
+      <Bot size={10} />
+      {dest}
+    </span>
+  );
+}
+
+// ─── Delegación Card ────────────────────────────────────────────────────────────
 
 interface CommandCardProps {
   command: NotionCommand;
   onUpdate: (id: string, updates: Partial<NotionCommand>) => Promise<void>;
-  onCopyPrompt: (text: string) => void;
   onDelete: (id: string) => void;
+  onCopyPrompt: (text: string) => void;
 }
 
-function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardProps) {
+function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [respuesta, setRespuesta] = useState(command.respuesta);
   const [subchat, setSubchat] = useState(command.subchat || '');
@@ -238,6 +277,12 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
           </div>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <DestBadge dest={command.destinatario} />
+            {command.subchat && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-ink-muted">
+                <MessageSquare size={9} />
+                {command.subchat}
+              </span>
+            )}
             {command.prioridad && (
               <span className={clsx(
                 'text-[10px] font-medium px-1.5 py-0.5 rounded',
@@ -251,12 +296,6 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
             {command.fechaCreacion && (
               <span className="text-[10px] text-ink-faint">
                 {format(parseISO(command.fechaCreacion), 'd MMM', { locale: es })}
-              </span>
-            )}
-            {command.subchat && (
-              <span className="text-[10px] text-ink-faint flex items-center gap-0.5">
-                <MessageSquare size={9} />
-                {command.subchat}
               </span>
             )}
           </div>
@@ -282,7 +321,7 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">Prompt</span>
                   <button
-                    onClick={copyPrompt}
+                    onClick={(e) => { e.stopPropagation(); copyPrompt(); }}
                     className={clsx(
                       'flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md transition-all',
                       copied
@@ -335,6 +374,7 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
                     placeholder="Pega aquí la respuesta del agente..."
                     className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint resize-none focus:outline-none focus:border-accent/60 min-h-[80px]"
                     rows={4}
+                    onClick={e => e.stopPropagation()}
                   />
                   {respuesta !== command.respuesta && respuesta.trim() && (
                     <button
@@ -408,13 +448,21 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
                   </button>
                 )}
 
-                {/* Cancel/delete */}
+                {/* Cancel and Delete buttons */}
                 <button
-                  onClick={() => onDelete(command.id)}
-                  className="ml-auto flex items-center gap-1 px-2 py-1.5 text-[10px] text-ink-faint hover:text-red-400 transition-colors"
+                  onClick={() => changeEstado('Cancelado')}
+                  className="ml-auto flex items-center gap-1 px-2 py-1.5 text-[10px] text-ink-faint hover:text-yellow-400 transition-colors"
                 >
                   <X size={10} />
                   Cancelar
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(command.id); }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-danger/60 hover:text-danger hover:bg-danger/10 text-xs rounded-lg transition-colors"
+                  title="Eliminar delegación"
+                >
+                  <Trash2 size={11} />
+                  <span className="hidden sm:inline">Eliminar</span>
                 </button>
               </div>
             </div>
@@ -425,7 +473,7 @@ function CommandCard({ command, onUpdate, onCopyPrompt, onDelete }: CommandCardP
   );
 }
 
-// ─── Create Command Modal ──────────────────────────────────────────────────────
+// ─── Create Delegación Modal ────────────────────────────────────────────────────
 
 interface CreateCommandModalProps {
   onClose: () => void;
@@ -435,6 +483,7 @@ interface CreateCommandModalProps {
 function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
   const [titulo, setTitulo] = useState('');
   const [destinatario, setDestinatario] = useState<CommandDestinatario | ''>('');
+  const [subchat, setSubchat] = useState('');
   const [prompt, setPrompt] = useState('');
   const [prioridad, setPrioridad] = useState<CommandPrioridad | ''>('Media');
   const [saving, setSaving] = useState(false);
@@ -442,7 +491,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!titulo.trim()) { setError('El título es obligatorio'); return; }
+    if (!titulo.trim()) { setError('El titulo es obligatorio'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -450,6 +499,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
         titulo: titulo.trim(),
         prompt: prompt.trim(),
         destinatario: destinatario || null,
+        subchat: subchat.trim() || undefined,
         prioridad: (prioridad || null) as CommandPrioridad | null,
       };
       const res = await fetch('/api/notion/commands', {
@@ -459,7 +509,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
       });
       if (!res.ok) {
         const d = await res.json();
-        throw new Error(d.error ?? 'Error al crear command');
+        throw new Error(d.error ?? 'Error al crear delegación');
       }
       onCreated();
     } catch (err) {
@@ -474,14 +524,14 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-lg bg-surface-card border border-edge rounded-2xl shadow-2xl"
+        className="w-full max-w-lg bg-surface-card border border-edge rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between p-5 border-b border-edge/40">
           <div className="flex items-center gap-2">
             <Terminal size={15} className="text-accent" />
-            <h2 className="text-sm font-semibold text-ink">Nuevo Command</h2>
+            <h2 className="text-sm font-semibold text-ink">Nueva Delegación</h2>
           </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink p-1">✕</button>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink p-1">&#x2715;</button>
         </div>
         <form onSubmit={submit} className="p-5 flex flex-col gap-4">
           {error && (
@@ -490,7 +540,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
             </div>
           )}
           <div>
-            <label className="text-xs font-medium text-ink-secondary block mb-1.5">Título *</label>
+            <label className="text-xs font-medium text-ink-secondary block mb-1.5">Titulo *</label>
             <input
               value={titulo}
               onChange={e => setTitulo(e.target.value)}
@@ -525,6 +575,19 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               </select>
             </div>
           </div>
+          {/* Sub-chat field */}
+          <div>
+            <label className="text-xs font-medium text-ink-secondary block mb-1.5">
+              Sub-chat / Nota
+              <span className="text-ink-faint font-normal ml-1">(opcional)</span>
+            </label>
+            <input
+              value={subchat}
+              onChange={e => setSubchat(e.target.value)}
+              placeholder='ej: "CEO — AeroReclaim", "Tech & Pipeline"'
+              className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+            />
+          </div>
           <div>
             <label className="text-xs font-medium text-ink-secondary block mb-1.5">Prompt</label>
             <textarea
@@ -545,7 +608,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
             >
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-              Crear command
+              Crear delegación
             </button>
           </div>
         </form>
@@ -561,7 +624,7 @@ function SetupBanner() {
     <div className="rounded-xl border border-warn/30 bg-warn/5 p-5 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <AlertCircle size={16} className="text-warn" />
-        <h3 className="text-sm font-semibold text-ink">Setup requerido: Base de datos de Commands</h3>
+        <h3 className="text-sm font-semibold text-ink">Setup requerido: Base de datos de Delegaciones</h3>
       </div>
       <p className="text-xs text-ink-muted leading-relaxed">
         La variable <code className="bg-surface-elevated px-1 py-0.5 rounded text-accent font-mono">COMMANDS_DATABASE_ID</code> no está configurada en Vercel.
@@ -570,7 +633,7 @@ function SetupBanner() {
   );
 }
 
-// ─── Main Command Center ───────────────────────────────────────────────────────
+// ─── Main Delegaciones Center ───────────────────────────────────────────────────
 
 export function CommandCenter() {
   const [commands, setCommands] = useState<NotionCommand[]>([]);
@@ -581,6 +644,7 @@ export function CommandCenter() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const fetchCommands = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -591,7 +655,7 @@ export function CommandCenter() {
       const data = await res.json();
       if (!res.ok) {
         if (data.needsSetup) { setNeedsSetup(true); return; }
-        throw new Error(data.error ?? 'Error cargando commands');
+        throw new Error(data.error ?? 'Error cargando delegaciones');
       }
       setCommands(data.commands);
     } catch (err) {
@@ -617,9 +681,14 @@ export function CommandCenter() {
     }
   }, [fetchCommands]);
 
-  const cancelCommand = useCallback(async (id: string) => {
-    await updateCommand(id, { estado: 'Cancelado' as CommandEstado });
-  }, [updateCommand]);
+  const deleteCommand = useCallback(async (id: string) => {
+    setCommands(prev => prev.filter(c => c.id !== id));
+    setDeleteConfirmId(null);
+    const res = await fetch(`/api/notion/commands/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      fetchCommands(true);
+    }
+  }, [fetchCommands]);
 
   function handleCopyPrompt(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
@@ -655,7 +724,7 @@ export function CommandCenter() {
         <div>
           <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Terminal size={15} className="text-accent" />
-            Command Center
+            Delegaciones
           </h2>
           <div className="flex items-center gap-3 mt-1">
             {Object.entries(counts).map(([estado, count]) => {
@@ -683,7 +752,7 @@ export function CommandCenter() {
             className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-xl transition-colors shadow-sm"
           >
             <Plus size={12} />
-            Nuevo
+            Nueva Delegación
           </button>
         </div>
       </div>
@@ -693,7 +762,7 @@ export function CommandCenter() {
         <div className="flex items-start gap-2 p-3 bg-red-500/8 border border-red-500/20 rounded-xl text-xs text-red-400">
           <AlertCircle size={13} className="mt-0.5 shrink-0" />
           <div>
-            <p className="font-medium">Error cargando commands</p>
+            <p className="font-medium">Error cargando delegaciones</p>
             <p className="mt-0.5 text-red-400/70">{error}</p>
             <button onClick={() => fetchCommands()} className="mt-1.5 underline underline-offset-2">Reintentar</button>
           </div>
@@ -708,8 +777,8 @@ export function CommandCenter() {
             {sortedActive.length === 0 ? (
               <div className="text-center py-12 text-ink-muted">
                 <Terminal size={24} className="mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">No hay commands activos</p>
-                <p className="text-xs mt-1 text-ink-faint">Crea un nuevo command para empezar</p>
+                <p className="text-sm font-medium">No hay delegaciones activas</p>
+                <p className="text-xs mt-1 text-ink-faint">Crea una nueva delegación para empezar</p>
               </div>
             ) : (
               sortedActive.map(cmd => (
@@ -717,8 +786,8 @@ export function CommandCenter() {
                   key={cmd.id}
                   command={cmd}
                   onUpdate={updateCommand}
+                  onDelete={setDeleteConfirmId}
                   onCopyPrompt={handleCopyPrompt}
-                  onDelete={cancelCommand}
                 />
               ))
             )}
@@ -747,8 +816,8 @@ export function CommandCenter() {
                         key={cmd.id}
                         command={cmd}
                         onUpdate={updateCommand}
+                        onDelete={setDeleteConfirmId}
                         onCopyPrompt={handleCopyPrompt}
-                        onDelete={cancelCommand}
                       />
                     ))}
                   </motion.div>
@@ -766,6 +835,16 @@ export function CommandCenter() {
         />
       )}
 
+      {/* Delete confirmation */}
+      {deleteConfirmId && (
+        <ConfirmDialog
+          message="¿Seguro que quieres eliminar esta delegación? Se archivara en Notion."
+          onConfirm={() => deleteCommand(deleteConfirmId)}
+          onCancel={() => setDeleteConfirmId(null)}
+        />
+      )}
+
+      {/* Copy toast */}
       <AnimatePresence>
         {copiedToast && (
           <motion.div

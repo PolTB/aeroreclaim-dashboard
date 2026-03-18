@@ -25,7 +25,7 @@ type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'settings';
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
   { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
   { id: 'timeline',  label: 'Timeline',  shortLabel: 'Timeline',  icon: <BarChart2 size={13} /> },
-  { id: 'commands',  label: 'Commands',  shortLabel: 'Cmds',      icon: <Terminal size={13} /> },
+  { id: 'commands',  label: 'Delegaciones',  shortLabel: 'Deleg',      icon: <Terminal size={13} /> },
   { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
   { id: 'settings',  label: 'Settings',  shortLabel: 'Config',    icon: <Settings size={13} /> },
 ];
@@ -55,7 +55,7 @@ function SettingsPanel({ isDark, onToggle }: { isDark: boolean; onToggle: () => 
           DB Tasks: <code className="font-mono text-accent bg-surface-elevated px-1 rounded">abb1607fb6b0460782fc0d268a7ce21f</code>
         </p>
         <p className="text-xs text-ink-muted mt-1">
-          DB Commands: configurar <code className="font-mono text-accent bg-surface-elevated px-1 rounded">COMMANDS_DATABASE_ID</code> en Vercel
+          DB Delegaciones: configurar <code className="font-mono text-accent bg-surface-elevated px-1 rounded">COMMANDS_DATABASE_ID</code> en Vercel
         </p>
         <p className="text-xs text-ink-muted mt-1">
           Auth: <code className="font-mono text-accent bg-surface-elevated px-1 rounded">BASIC_AUTH_USER</code> / <code className="font-mono text-accent bg-surface-elevated px-1 rounded">BASIC_AUTH_PASSWORD</code>
