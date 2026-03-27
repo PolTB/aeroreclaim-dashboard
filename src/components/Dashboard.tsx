@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutGrid, BarChart2, Terminal, Settings, RefreshCw, Plus,
-  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase,
+  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -19,14 +19,18 @@ import { CommandCenter } from './CommandCenter';
 import { AgentStatusPanel } from './AgentStatusPanel';
 import { QuickInbox } from './QuickInbox';
 import { CaseTracker } from './CaseTracker';
+import { RoadmapTimeline } from './RoadmapTimeline';
+import { PhaseBacklog } from './PhaseBacklog';
+import type { Phase } from './RoadmapTimeline';
 
-type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'settings';
+type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'roadmap' | 'settings';
 
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
   { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
   { id: 'timeline',  label: 'Timeline',  shortLabel: 'Timeline',  icon: <BarChart2 size={13} /> },
   { id: 'commands',  label: 'Delegaciones',  shortLabel: 'Deleg',      icon: <Terminal size={13} /> },
   { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
+  { id: 'roadmap',   label: 'Roadmap',   shortLabel: 'Road',      icon: <Map size={13} /> },
   { id: 'settings',  label: 'Settings',  shortLabel: 'Config',    icon: <Settings size={13} /> },
 ];
 
@@ -77,6 +81,7 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [hasEstado, setHasEstado] = useState(true);
   const [view, setView] = useState<ViewMode>('kanban');
+  const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -184,7 +189,7 @@ export function Dashboard() {
   );
 
   const showTaskViews = view === 'kanban' || view === 'timeline';
-  const showFullWidth = view === 'commands' || view === 'cases' || view === 'settings';
+  const showFullWidth = view === 'commands' || view === 'cases' || view === 'roadmap' || view === 'settings';
 
   if (loading) {
     return (
@@ -296,6 +301,12 @@ export function Dashboard() {
             {view === 'cases' && (
               <motion.div key="cases" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <CaseTracker />
+              </motion.div>
+            )}
+            {view === 'roadmap' && (
+              <motion.div key="roadmap" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col gap-5">
+                <RoadmapTimeline onSelectPhase={setSelectedPhase} activePhaseId={selectedPhase?.id} />
+                <PhaseBacklog tasks={tasks} activePhase={selectedPhase} />
               </motion.div>
             )}
             {view === 'settings' && (
