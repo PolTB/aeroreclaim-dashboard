@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutGrid, BarChart2, Terminal, Settings, RefreshCw, Plus,
-  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map,
+  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map, BookOpen,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -21,9 +21,10 @@ import { QuickInbox } from './QuickInbox';
 import { CaseTracker } from './CaseTracker';
 import { RoadmapTimeline } from './RoadmapTimeline';
 import { PhaseBacklog } from './PhaseBacklog';
+import { BlogCalendar } from './BlogCalendar';
 import type { Phase } from './RoadmapTimeline';
 
-type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'roadmap' | 'settings';
+type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'roadmap' | 'blog' | 'settings';
 
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
   { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
@@ -31,6 +32,7 @@ const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabe
   { id: 'commands',  label: 'Delegaciones',  shortLabel: 'Deleg',      icon: <Terminal size={13} /> },
   { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
   { id: 'roadmap',   label: 'Roadmap',   shortLabel: 'Road',      icon: <Map size={13} /> },
+  { id: 'blog',      label: 'Blog',      shortLabel: 'Blog',      icon: <BookOpen size={13} /> },
   { id: 'settings',  label: 'Settings',  shortLabel: 'Config',    icon: <Settings size={13} /> },
 ];
 
@@ -189,7 +191,7 @@ export function Dashboard() {
   );
 
   const showTaskViews = view === 'kanban' || view === 'timeline';
-  const showFullWidth = view === 'commands' || view === 'cases' || view === 'roadmap' || view === 'settings';
+  const showFullWidth = view === 'commands' || view === 'cases' || view === 'roadmap' || view === 'blog' || view === 'settings';
 
   if (loading) {
     return (
@@ -307,6 +309,11 @@ export function Dashboard() {
               <motion.div key="roadmap" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col gap-5">
                 <RoadmapTimeline onSelectPhase={setSelectedPhase} activePhaseId={selectedPhase?.id} />
                 <PhaseBacklog tasks={tasks} activePhase={selectedPhase} />
+              </motion.div>
+            )}
+            {view === 'blog' && (
+              <motion.div key="blog" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <BlogCalendar />
               </motion.div>
             )}
             {view === 'settings' && (

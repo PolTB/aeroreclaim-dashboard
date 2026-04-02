@@ -239,3 +239,27 @@ export interface AeroCaso {
   pipeline: Record<PipelineStage, StageInfo>;
   notaInterna?: string;
 }
+
+// ─── Blog Calendar types ───────────────────────────────────────────────────────
+
+export type BlogEstado = 'Publicado' | 'Listo' | 'Redactando' | 'Pendiente DEL' | 'Cancelado';
+
+export interface BlogEntry {
+  id: string;
+  titulo: string;
+  fechaPublicacion: string | null;
+  estado: BlogEstado;
+  tag: string | null;
+  urlBlog: string | null;
+  keyword: string;
+  notas: string;
+  url: string;
+}
+
+export const BLOG_ESTADO_CONFIG: Record<BlogEstado, { label: string; color: string; bg: string; dot: string }> = {
+  'Publicado':     { label: 'Publicado',     color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   dot: '#22c55e' },
+  'Listo':         { label: 'Listo',         color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  dot: '#3b82f6' },
+  'Redactando':    { label: 'Redactando',    color: '#eab308', bg: 'rgba(234,179,8,0.12)',   dot: '#eab308' },
+  'Pendiente DEL': { label: 'Pendiente DEL', color: '#f97316', bg: 'rgba(249,115,22,0.12)',  dot: '#f97316' },
+  'Cancelado':     { label: 'Cancelado',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   dot: '#ef4444' },
+};
