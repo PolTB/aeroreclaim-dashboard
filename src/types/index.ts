@@ -133,6 +133,9 @@ export function getCategoryColor(cat: string | null): string {
 export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual';
 export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Respuesta Recibida' | 'Completado' | 'Bloqueado' | 'Cancelado';
 export type CommandPrioridad = 'Alta' | 'Media' | 'Baja';
+export type CommandArchivoTipo = 'imagen' | 'PDF' | 'markdown' | 'HTML' | 'Google Doc' | 'otro';
+
+export const COMMAND_ARCHIVO_TIPOS: CommandArchivoTipo[] = ['imagen', 'PDF', 'markdown', 'HTML', 'Google Doc', 'otro'];
 
 export interface NotionCommand {
   id: string;
@@ -146,6 +149,8 @@ export interface NotionCommand {
   fechaCreacion: string | null;
   fechaCompletado: string | null;
   url: string;
+  archivoUrl: string | null;
+  archivoTipo: CommandArchivoTipo | null;
 }
 
 export interface CreateCommandPayload {
@@ -154,6 +159,8 @@ export interface CreateCommandPayload {
   subchat?: string;
   prompt: string;
   prioridad?: CommandPrioridad | null;
+  archivoUrl?: string | null;
+  archivoTipo?: CommandArchivoTipo | null;
 }
 
 export interface UpdateCommandPayload {
@@ -163,6 +170,8 @@ export interface UpdateCommandPayload {
   fechaCompletado?: string | null;
   destinatario?: CommandDestinatario | null;
   prioridad?: CommandPrioridad | null;
+  archivoUrl?: string | null;
+  archivoTipo?: CommandArchivoTipo | null;
 }
 
 export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [

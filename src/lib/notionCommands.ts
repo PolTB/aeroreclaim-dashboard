@@ -1,6 +1,6 @@
 import { Client } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
-import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CreateCommandPayload, UpdateCommandPayload } from '@/types';
+import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CommandArchivoTipo, CreateCommandPayload, UpdateCommandPayload } from '@/types';
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const DB_ID = process.env.COMMANDS_DATABASE_ID!;
@@ -23,6 +23,10 @@ function getDate(props: Props, key: string): string | null {
   const p = props[key];
   return p?.type === 'date' ? (p.date?.start ?? null) : null;
 }
+function getUrl(props: Props, key: string): string | null {
+  const p = props[key];
+  return p?.type === 'url' ? (p.url ?? null) : null;
+}
 
 function parseNotionCommand(page: PageObjectResponse): NotionCommand {
   const props = page.properties;
@@ -38,6 +42,8 @@ function parseNotionCommand(page: PageObjectResponse): NotionCommand {
     fechaCreacion: getDate(props, 'Fecha_Creacion'),
     fechaCompletado: getDate(props, 'Fecha_Completado'),
     url: page.url,
+    archivoUrl: getUrl(props, 'Archivo_URL'),
+    archivoTipo: getSelect(props, 'Archivo_Tipo') as CommandArchivoTipo | null,
   };
 }
 
@@ -73,6 +79,8 @@ export async function createCommand(payload: CreateCommandPayload): Promise<void
   if (payload.destinatario) properties['Destinatario'] = { select: { name: payload.destinatario } };
   if (payload.subchat) properties['Subchat'] = { rich_text: [{ text: { content: payload.subchat } }] };
   if (payload.prioridad) properties['Prioridad'] = { select: { name: payload.prioridad } };
+  if (payload.archivoUrl) properties['Archivo_URL'] = { url: payload.archivoUrl };
+  if (payload.archivoTipo) properties['Archivo_Tipo'] = { select: { name: payload.archivoTipo } };
 
   await notion.pages.create({ parent: { database_id: DB_ID }, properties });
 }
@@ -99,6 +107,8 @@ export async function updateCommand(id: string, updates: UpdateCommandPayload): 
   if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: toRichTextBlocks(updates.subchat) };
   if (updates.destinatario !== undefined) properties['Destinatario'] = updates.destinatario ? { select: { name: updates.destinatario } } : { select: null };
   if (updates.prioridad !== undefined) properties['Prioridad'] = updates.prioridad ? { select: { name: updates.prioridad } } : { select: null };
+  if (updates.archivoUrl !== undefined) properties['Archivo_URL'] = updates.archivoUrl ? { url: updates.archivoUrl } : { url: null };
+  if (updates.archivoTipo !== undefined) properties['Archivo_Tipo'] = updates.archivoTipo ? { select: { name: updates.archivoTipo } } : { select: null };
   await notion.pages.update({ page_id: id, properties });
 }
 

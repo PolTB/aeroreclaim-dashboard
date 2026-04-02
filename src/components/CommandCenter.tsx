@@ -5,15 +5,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown,
   RefreshCw, Loader2, Check, Bot, Send, History, AlertTriangle,
-  Inbox, Ban, ArrowLeftRight, X, MessageSquare, Trash2
+  Inbox, Ban, ArrowLeftRight, X, MessageSquare, Trash2, Paperclip, Link, ExternalLink
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { NotionCommand, CommandEstado, CommandDestinatario, CommandPrioridad, CreateCommandPayload } from '@/types';
+import type { NotionCommand, CommandEstado, CommandDestinatario, CommandPrioridad, CommandArchivoTipo, CreateCommandPayload } from '@/types';
 import {
   COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG, COMMAND_ESTADO_ORDER,
-  ACTIVE_ESTADOS, ARCHIVED_ESTADOS
+  ACTIVE_ESTADOS, ARCHIVED_ESTADOS, COMMAND_ARCHIVO_TIPOS
 } from '@/types';
 
 // ─── Estado badge ──────────────────────────────────────────────────────────────
@@ -190,6 +190,10 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
   const [expanded, setExpanded] = useState(false);
   const [respuesta, setRespuesta] = useState(command.respuesta);
   const [subchat, setSubchat] = useState(command.subchat || '');
+  const [archivoUrl, setArchivoUrl] = useState(command.archivoUrl || '');
+  const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>(command.archivoTipo || '');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -234,6 +238,43 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
       setSaveError('Error al guardar subchat.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveArchivo() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onUpdate(command.id, {
+        archivoUrl: archivoUrl.trim() || null,
+        archivoTipo: (archivoTipo || null) as CommandArchivoTipo | null,
+      });
+    } catch {
+      setSaveError('Error al guardar archivo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setSaveError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      setArchivoUrl(data.url);
+      setArchivoTipo(data.tipo);
+      await onUpdate(command.id, { archivoUrl: data.url, archivoTipo: data.tipo });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Error al subir archivo.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -296,6 +337,12 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
             {command.fechaCreacion && (
               <span className="text-[10px] text-ink-faint">
                 {format(parseISO(command.fechaCreacion), 'd MMM', { locale: es })}
+              </span>
+            )}
+            {command.archivoUrl && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-accent/70">
+                <Paperclip size={9} />
+                {command.archivoTipo ?? 'archivo'}
               </span>
             )}
           </div>
@@ -407,6 +454,71 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
                 </div>
               )}
 
+              {/* Archivo adjunto */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
+                    Archivo adjunto
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                      disabled={uploading}
+                      className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-surface-elevated text-ink-muted hover:text-ink-secondary transition-all disabled:opacity-50"
+                    >
+                      {uploading ? <Loader2 size={10} className="animate-spin" /> : <Paperclip size={10} />}
+                      {uploading ? 'Subiendo...' : 'Subir archivo'}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={archivoUrl}
+                    onChange={e => setArchivoUrl(e.target.value)}
+                    placeholder="URL pública (Vercel Blob, Google Drive /file/d/ID/view...)"
+                    className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <select
+                    value={archivoTipo}
+                    onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
+                    onClick={e => e.stopPropagation()}
+                    className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
+                  >
+                    <option value="">Tipo</option>
+                    {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                {(archivoUrl !== (command.archivoUrl || '') || archivoTipo !== (command.archivoTipo || '')) && (
+                  <button
+                    onClick={saveArchivo}
+                    disabled={saving}
+                    className="mt-1.5 flex items-center gap-1 px-2.5 py-1 bg-accent/15 text-accent text-[10px] font-medium rounded-lg hover:bg-accent/25 transition-colors disabled:opacity-50"
+                  >
+                    <Link size={10} />
+                    Guardar URL
+                  </button>
+                )}
+                {command.archivoUrl && (
+                  <a
+                    href={command.archivoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-accent hover:underline"
+                  >
+                    <ExternalLink size={10} />
+                    {command.archivoTipo ?? 'Abrir archivo'}
+                  </a>
+                )}
+              </div>
+
               {/* Actions row */}
               <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-edge/20">
                 {/* Estado selector — always available, bidirectional */}
@@ -486,8 +598,33 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
   const [subchat, setSubchat] = useState('');
   const [prompt, setPrompt] = useState('');
   const [prioridad, setPrioridad] = useState<CommandPrioridad | ''>('Media');
+  const [archivoUrl, setArchivoUrl] = useState('');
+  const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      setArchivoUrl(data.url);
+      setArchivoTipo(data.tipo);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al subir archivo.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -501,6 +638,8 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
         destinatario: destinatario || null,
         subchat: subchat.trim() || undefined,
         prioridad: (prioridad || null) as CommandPrioridad | null,
+        archivoUrl: archivoUrl.trim() || null,
+        archivoTipo: (archivoTipo || null) as CommandArchivoTipo | null,
       };
       const res = await fetch('/api/notion/commands', {
         method: 'POST',
@@ -587,6 +726,46 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               placeholder='ej: "CEO — AeroReclaim", "Tech & Pipeline"'
               className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
             />
+          </div>
+          {/* Archivo adjunto */}
+          <div>
+            <label className="text-xs font-medium text-ink-secondary block mb-1.5">
+              Archivo adjunto
+              <span className="text-ink-faint font-normal ml-1">(opcional)</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={archivoUrl}
+                onChange={e => setArchivoUrl(e.target.value)}
+                placeholder="URL pública o pega link de Google Drive..."
+                className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+              />
+              <select
+                value={archivoTipo}
+                onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-sm text-ink focus:outline-none focus:border-accent/60"
+              >
+                <option value="">Tipo</option>
+                {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 bg-surface-elevated border border-edge/60 text-ink-muted hover:text-ink rounded-lg transition-colors disabled:opacity-50"
+              >
+                {uploading ? <Loader2 size={11} className="animate-spin" /> : <Paperclip size={11} />}
+                {uploading ? 'Subiendo...' : 'Subir desde PC'}
+              </button>
+              {archivoUrl && (
+                <span className="text-[10px] text-success flex items-center gap-1">
+                  <Check size={10} /> URL lista
+                </span>
+              )}
+            </div>
           </div>
           <div>
             <label className="text-xs font-medium text-ink-secondary block mb-1.5">Prompt</label>
