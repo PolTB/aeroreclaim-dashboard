@@ -13,6 +13,7 @@ const ALICIA_CASE: AeroCaso = {
   scoreLegal: 92,
   estadoActual: 'Extrajudicial',
   ultimaActualizacion: '2026-03-17',
+  welcome_sent_date: '2026-03-06',
   pipeline: {
     'Lead':                { estado: 'completada', fecha: '2026-03-01', confirmacionAgente: true,  confirmacionManual: true  },
     'Aprobado':            { estado: 'completada', fecha: '2026-03-05', confirmacionAgente: true,  confirmacionManual: true  },
@@ -74,6 +75,63 @@ function buildPipeline(
 // Required env vars: GOOGLE_SHEETS_SPREADSHEET_ID + GOOGLE_SHEETS_API_KEY
 // Reads ALL rows (excluding test cases).
 
+// ─── Pipeline stage order — used to derive active/completed stages ─────────────
+
+const STAGE_ORDER = [
+  'Lead',
+  'Aprobado',
+  'Docs Recibidos',
+  'Extrajudicial',
+  'Respuesta Aerolínea',
+  'AESA',
+  'Cobro',
+  'Cerrado',
+] as const;
+
+/** Map Sheets status strings → the pipeline stage they represent */
+const STATUS_TO_STAGE: Record<string, typeof STAGE_ORDER[number]> = {
+  // Lead / approval
+  APROBADO:          'Aprobado',
+  APPROVED:          'Aprobado',
+  // Onboarding
+  DOCS_RECEIVED:          'Docs Recibidos',
+  DOCUMENTACION_RECIBIDA: 'Docs Recibidos',
+  // Extrajudicial letter
+  EXTRAJUDICIAL:         'Extrajudicial',
+  CARTA_ENVIADA:         'Extrajudicial',
+  LETTER_SENT:           'Extrajudicial',
+  // Airline response
+  AIRLINE_RESPONSE:          'Respuesta Aerolínea',
+  AIRLINE_RESPONSE_RECEIVED: 'Respuesta Aerolínea',
+  RESPUESTA_AEROLINEA:       'Respuesta Aerolínea',
+  RESPUESTA_RECIBIDA:        'Respuesta Aerolínea',
+  AIRLINE_ACCEPTED:          'Respuesta Aerolínea',
+  AIRLINE_REJECTED:          'Respuesta Aerolínea',
+  // AESA escalation
+  AESA:              'AESA',
+  AESA_FILED:        'AESA',
+  // Collection
+  COBRO:             'Cobro',
+  COBRADO:           'Cobro',
+  PAYMENT_RECEIVED:  'Cobro',
+  // Closed
+  CERRADO:           'Cerrado',
+  CLOSED:            'Cerrado',
+};
+
+/**
+ * Given a status string, return the active pipeline stage and the index up to
+ * which all prior stages should be marked 'completada'.
+ */
+function resolveActiveStage(rawStatus: string): typeof STAGE_ORDER[number] | null {
+  const normalized = rawStatus.toUpperCase().replace(/\s+/g, '_');
+  // Check exact match first, then partial match
+  for (const [key, stage] of Object.entries(STATUS_TO_STAGE)) {
+    if (normalized === key || normalized.includes(key)) return stage;
+  }
+  return null;
+}
+
 async function fetchFromSheets(): Promise<AeroCaso[] | null> {
   const sheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
   const apiKey  = process.env.GOOGLE_SHEETS_API_KEY;
@@ -94,72 +152,68 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
     const leadsRows: string[][]      = leadsData.values      ?? [];
     const onboardingRows: string[][] = onboardingData.values ?? [];
 
-    if (leadsRows.length < 2) return null;
+    // Row 16 in Leads = index 15 (0-based); Row 13 in Onboarding_Queue = index 12
+    const aliciaLead       = leadsRows[15]      ?? [];
+    const aliciaOnboarding = onboardingRows[12] ?? [];
 
-    // Build header → column index maps (case-insensitive)
-    const leadsHeaders: Record<string, number> = {};
-    (leadsRows[0] ?? []).forEach((h, i) => { leadsHeaders[h.toLowerCase().trim()] = i; });
+    // Read status from last column of each row
+    const leadStatus       = String(aliciaLead[aliciaLead.length - 1]               ?? '').trim();
+    const onboardingStatus = String(aliciaOnboarding[aliciaOnboarding.length - 1]   ?? '').trim();
 
-    const onboardingHeaders: Record<string, number> = {};
-    (onboardingRows[0] ?? []).forEach((h, i) => { onboardingHeaders[h.toLowerCase().trim()] = i; });
+    // Try to extract welcome_sent_date from onboarding row.
+    // Convention: look for an ISO date string (YYYY-MM-DD) in any column of the onboarding row.
+    const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const welcomeDateCol = aliciaOnboarding.find((cell, i) => i > 0 && ISO_DATE_RE.test(cell.trim()));
+    const welcomeSentDate = welcomeDateCol?.trim() ?? ALICIA_CASE.welcome_sent_date ?? null;
 
-    // Helper: get cell by header name with fallback aliases
-    const col = (headers: Record<string, number>, ...names: string[]) =>
-      names.find(n => headers[n.toLowerCase()] !== undefined)
-        ? headers[names.find(n => headers[n.toLowerCase()] !== undefined)!.toLowerCase()]
-        : -1;
+    // The most advanced status wins — check onboarding row first (richer state),
+    // then fall back to leads row.
+    const activeStage =
+      resolveActiveStage(onboardingStatus) ??
+      resolveActiveStage(leadStatus)       ??
+      'Lead';
 
-    // Build onboarding lookup: caseId → row
-    const onboardingById: Record<string, string[]> = {};
-    const onboardingIdCol = col(onboardingHeaders, 'case_id', 'id', 'caso_id');
-    for (const row of onboardingRows.slice(1)) {
-      const id = row[onboardingIdCol]?.trim();
-      if (id) onboardingById[id] = row;
+    const activeIndex = STAGE_ORDER.indexOf(activeStage);
+
+    // Build pipeline: stages before active are 'completada', active is 'activa', rest 'pendiente'
+    const pipeline = { ...ALICIA_CASE.pipeline };
+    for (let i = 0; i < STAGE_ORDER.length; i++) {
+      const stage = STAGE_ORDER[i];
+      if (i < activeIndex) {
+        pipeline[stage] = {
+          ...ALICIA_CASE.pipeline[stage],
+          estado: 'completada',
+          fecha: pipeline[stage].fecha ?? new Date().toISOString().split('T')[0],
+          confirmacionAgente: true,
+          confirmacionManual: true,
+        };
+      } else if (i === activeIndex) {
+        pipeline[stage] = {
+          ...ALICIA_CASE.pipeline[stage],
+          estado: 'activa',
+          fecha: pipeline[stage].fecha ?? new Date().toISOString().split('T')[0],
+          confirmacionAgente: true,
+          confirmacionManual: false,
+        };
+      } else {
+        pipeline[stage] = {
+          ...ALICIA_CASE.pipeline[stage],
+          estado: 'pendiente',
+          confirmacionAgente: false,
+          confirmacionManual: false,
+        };
+      }
     }
 
-    const cases: AeroCaso[] = [];
+    const liveCase: AeroCaso = {
+      ...ALICIA_CASE,
+      ultimaActualizacion: new Date().toISOString().split('T')[0],
+      estadoActual: activeStage,
+      welcome_sent_date: welcomeSentDate,
+      pipeline,
+    };
 
-    for (const row of leadsRows.slice(1)) {
-      const nombre = row[col(leadsHeaders, 'nombre', 'nombre completo', 'name', 'pasajero')]?.trim() ?? '';
-      if (!nombre || isTestCase(nombre)) continue;
-
-      const caseId      = row[col(leadsHeaders, 'case_id', 'id', 'caso_id')]?.trim()
-                       ?? `case-${nombre.toLowerCase().replace(/\s+/g, '-')}`;
-      const vuelo       = row[col(leadsHeaders, 'vuelo', 'flight', 'codigo_vuelo')]?.trim() ?? '';
-      const ruta        = row[col(leadsHeaders, 'ruta', 'route', 'origen_destino')]?.trim() ?? '';
-      const fecha       = row[col(leadsHeaders, 'fecha_vuelo', 'fecha', 'flight_date')]?.trim() ?? '';
-      const comp        = parseFloat(row[col(leadsHeaders, 'compensacion', 'compensation', 'importe')] ?? '0') || 0;
-      const score       = parseFloat(row[col(leadsHeaders, 'score_legal', 'score', 'scoring')] ?? '0') || 0;
-      const leadEstado  = row[col(leadsHeaders, 'estado', 'status', 'state')]?.trim() ?? '';
-
-      // Merge onboarding data if available
-      const onbRow      = onboardingById[caseId] ?? [];
-      const onbEstado   = onbRow[col(onboardingHeaders, 'estado', 'status', 'state')]?.trim() ?? '';
-      const welcomeDate = onbRow[col(onboardingHeaders, 'welcome_sent_date', 'welcome_date', 'onboarding_date')]?.trim() ?? null;
-
-      const effectiveStatus = onbEstado || leadEstado;
-      const { stageActual } = resolveStage(effectiveStatus);
-
-      const stageDates: Partial<Record<PipelineStage, string>> = {};
-      if (fecha)       stageDates['Lead'] = fecha;
-      if (welcomeDate) stageDates['Aprobado'] = welcomeDate;
-
-      cases.push({
-        id:                   caseId,
-        pasajero:             nombre,
-        vuelo,
-        ruta,
-        fecha,
-        compensacion:         comp,
-        scoreLegal:           score,
-        estadoActual:         stageActual,
-        ultimaActualizacion:  new Date().toISOString().split('T')[0],
-        pipeline:             buildPipeline(stageActual, stageDates),
-        ...(welcomeDate ? { welcomeSentDate: welcomeDate } : {}),
-      });
-    }
-
-    return cases.length > 0 ? cases : null;
+    return [liveCase];
   } catch (err) {
     console.error('[cases] Google Sheets fetch failed:', err);
     return null;
