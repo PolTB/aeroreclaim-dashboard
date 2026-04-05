@@ -1,76 +1,79 @@
 import { NextResponse } from 'next/server';
-import type { AeroCaso } from '@/types';
+import type { AeroCaso, PipelineStage } from '@/types';
 
 // ─── Hardcoded fallback (Alicia Zunzunegui – UX52 HAV→MAD 05/Feb/2026) ────────
 
 const ALICIA_CASE: AeroCaso = {
-  id: 'caso-alicia-ux52-2026',
+  id: 'AR-20260317-MANUAL-001',
   pasajero: 'Alicia Manuela Zunzunegui Garcia',
   vuelo: 'UX52',
   ruta: 'HAV → MAD',
   fecha: '2026-02-05',
   compensacion: 600,
   scoreLegal: 92,
-  estadoActual: 'Docs Recibidos',
+  estadoActual: 'Extrajudicial',
   ultimaActualizacion: '2026-03-17',
   welcome_sent_date: '2026-03-06',
   pipeline: {
-    'Lead': {
-      estado: 'completada',
-      fecha: '2026-03-01',
-      confirmacionAgente: true,
-      confirmacionManual: true,
-    },
-    'Aprobado': {
-      estado: 'completada',
-      fecha: '2026-03-05',
-      confirmacionAgente: true,
-      confirmacionManual: true,
-    },
-    'Docs Recibidos': {
-      estado: 'activa',
-      fecha: '2026-03-10',
-      confirmacionAgente: true,
-      confirmacionManual: false,
-    },
-    'Extrajudicial': {
-      estado: 'pendiente',
-      fecha: null,
-      confirmacionAgente: false,
-      confirmacionManual: false,
-    },
-    'Respuesta Aerolínea': {
-      estado: 'pendiente',
-      fecha: null,
-      confirmacionAgente: false,
-      confirmacionManual: false,
-    },
-    'AESA': {
-      estado: 'pendiente',
-      fecha: null,
-      confirmacionAgente: false,
-      confirmacionManual: false,
-    },
-    'Cobro': {
-      estado: 'pendiente',
-      fecha: null,
-      confirmacionAgente: false,
-      confirmacionManual: false,
-    },
-    'Cerrado': {
-      estado: 'pendiente',
-      fecha: null,
-      confirmacionAgente: false,
-      confirmacionManual: false,
-    },
+    'Lead':                { estado: 'completada', fecha: '2026-03-01', confirmacionAgente: true,  confirmacionManual: true  },
+    'Aprobado':            { estado: 'completada', fecha: '2026-03-05', confirmacionAgente: true,  confirmacionManual: true  },
+    'Docs Recibidos':      { estado: 'completada', fecha: '2026-03-10', confirmacionAgente: true,  confirmacionManual: true  },
+    'Extrajudicial':       { estado: 'activa',     fecha: '2026-03-17', confirmacionAgente: true,  confirmacionManual: true  },
+    'Respuesta Aerolínea': { estado: 'pendiente',  fecha: null,          confirmacionAgente: false, confirmacionManual: false },
+    'AESA':                { estado: 'pendiente',  fecha: null,          confirmacionAgente: false, confirmacionManual: false },
+    'Cobro':               { estado: 'pendiente',  fecha: null,          confirmacionAgente: false, confirmacionManual: false },
+    'Cerrado':             { estado: 'pendiente',  fecha: null,          confirmacionAgente: false, confirmacionManual: false },
   },
 };
 
-// ─── Optional: Google Sheets reader ──────────────────────────────────────────
-// Requires env vars: GOOGLE_SHEETS_SPREADSHEET_ID + GOOGLE_SHEETS_API_KEY
-// Sheet: "AeroReclaim — Registro Central del Proyecto"
-//   · Leads tab        (gid: 519455070)  → row 16 = Alicia
-//   · Onboarding_Queue (gid: 478894808)  → row 13 = Alicia
+// ─── Test cases to exclude from dashboard ─────────────────────────────────────
+const TEST_CASE_PATTERNS = ['maria test', 'test final', 'prueba'];
+
+function isTestCase(nombre: string): boolean {
+  return TEST_CASE_PATTERNS.some(p => nombre.toLowerCase().includes(p));
+}
+
+// ─── Map sheet status string → pipeline stage + estado ────────────────────────
+function resolveStage(status: string): { stage: PipelineStage; stageActual: PipelineStage } {
+  const s = status.toUpperCase();
+  if (s.includes('CERRADO') || s.includes('COBRADO'))        return { stage: 'Cerrado',             stageActual: 'Cerrado' };
+  if (s.includes('COBRO') || s.includes('COLLECTION'))       return { stage: 'Cobro',               stageActual: 'Cobro' };
+  if (s.includes('AESA'))                                    return { stage: 'AESA',                stageActual: 'AESA' };
+  if (s.includes('RESPUESTA') || s.includes('AIRLINE_RESP')) return { stage: 'Respuesta Aerolínea', stageActual: 'Respuesta Aerolínea' };
+  if (s.includes('EXTRAJUDICIAL') || s.includes('ENVIADO'))  return { stage: 'Extrajudicial',       stageActual: 'Extrajudicial' };
+  if (s.includes('MANDATE_SIGNED') || s.includes('DOCS'))    return { stage: 'Docs Recibidos',      stageActual: 'Docs Recibidos' };
+  if (s.includes('APROBADO') || s.includes('ONBOARDING'))    return { stage: 'Aprobado',            stageActual: 'Aprobado' };
+  return { stage: 'Lead', stageActual: 'Lead' };
+}
+
+// Build pipeline record from the active stage
+function buildPipeline(
+  activeStage: PipelineStage,
+  stageDates: Partial<Record<PipelineStage, string>>
+): AeroCaso['pipeline'] {
+  const ORDERED: PipelineStage[] = [
+    'Lead', 'Aprobado', 'Docs Recibidos', 'Extrajudicial',
+    'Respuesta Aerolínea', 'AESA', 'Cobro', 'Cerrado',
+  ];
+  const activeIdx = ORDERED.indexOf(activeStage);
+
+  return Object.fromEntries(
+    ORDERED.map((stage, i) => [
+      stage,
+      {
+        estado:              i < activeIdx ? 'completada' : i === activeIdx ? 'activa' : 'pendiente',
+        fecha:               stageDates[stage] ?? null,
+        confirmacionAgente:  i <= activeIdx,
+        confirmacionManual:  i <= activeIdx,
+      },
+    ])
+  ) as AeroCaso['pipeline'];
+}
+
+// ─── Google Sheets reader ──────────────────────────────────────────────────────
+// Uses headers from row 1 to locate columns dynamically — no hardcoded indices.
+// Required env vars: GOOGLE_SHEETS_SPREADSHEET_ID + GOOGLE_SHEETS_API_KEY
+// Reads ALL rows (excluding test cases).
 
 // ─── Pipeline stage order — used to derive active/completed stages ─────────────
 
@@ -134,14 +137,13 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
   const apiKey  = process.env.GOOGLE_SHEETS_API_KEY;
   if (!sheetId || !apiKey) return null;
 
-  try {
-    const base = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values`;
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values`;
 
+  try {
     const [leadsRes, onboardingRes] = await Promise.all([
       fetch(`${base}/Leads!A:Z?key=${apiKey}`,            { next: { revalidate: 60 } }),
       fetch(`${base}/Onboarding_Queue!A:Z?key=${apiKey}`, { next: { revalidate: 60 } }),
     ]);
-
     if (!leadsRes.ok || !onboardingRes.ok) return null;
 
     const leadsData      = await leadsRes.json();
