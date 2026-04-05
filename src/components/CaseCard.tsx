@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Plane, Calendar, Euro } from 'lucide-react';
+import { Plane, Calendar, Euro, Mail, FileText } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import clsx from 'clsx';
@@ -95,20 +95,52 @@ export function CaseCard({ caso, index }: { caso: AeroCaso; index: number }) {
       <CasePipeline caso={caso} />
 
       {/* ── Footer ── */}
-      <div className="flex items-center justify-between pt-2 border-t border-edge/40">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-ink-faint">Estado:</span>
-          <span className="text-[10px] font-semibold text-warn bg-warn/10 px-2 py-0.5 rounded-full border border-warn/20">
-            {caso.estadoActual}
-          </span>
-          <span className="text-[10px] text-ink-faint">→ próximo:</span>
-          <span className="text-[10px] text-ink-secondary">
-            {PIPELINE_STAGES[stageIndex + 1] ?? '—'}
+      <div className="flex flex-col gap-2 pt-2 border-t border-edge/40">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-ink-faint">Estado:</span>
+            <span className="text-[10px] font-semibold text-warn bg-warn/10 px-2 py-0.5 rounded-full border border-warn/20">
+              {caso.estadoActual}
+            </span>
+            <span className="text-[10px] text-ink-faint">→ próximo:</span>
+            <span className="text-[10px] text-ink-secondary">
+              {PIPELINE_STAGES[stageIndex + 1] ?? '—'}
+            </span>
+          </div>
+          <span className="text-[10px] text-ink-faint">
+            {format(parseISO(caso.ultimaActualizacion), "d MMM ''yy", { locale: es })}
           </span>
         </div>
-        <span className="text-[10px] text-ink-faint">
-          {format(parseISO(caso.ultimaActualizacion), "d MMM ''yy", { locale: es })}
-        </span>
+
+        <div className="flex items-center justify-between">
+          {/* welcome_sent_date */}
+          {caso.welcome_sent_date ? (
+            <span className="flex items-center gap-1 text-[10px] text-ink-muted">
+              <Mail size={9} className="text-success" />
+              Bienvenida enviada:{' '}
+              <span className="text-ink-secondary font-medium">
+                {format(parseISO(caso.welcome_sent_date), "d MMM ''yy", { locale: es })}
+              </span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] text-ink-faint">
+              <Mail size={9} />
+              Bienvenida: pendiente
+            </span>
+          )}
+
+          {/* PDF letter button */}
+          <a
+            href={`/api/cases/${caso.id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/80 transition-colors"
+            title="Generar carta formal"
+          >
+            <FileText size={10} />
+            Carta formal
+          </a>
+        </div>
       </div>
     </motion.div>
   );
