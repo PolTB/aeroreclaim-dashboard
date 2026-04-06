@@ -1,5 +1,71 @@
+import { list, put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import type { AeroCaso, PipelineStage } from '@/types';
+import { trackEvent } from '@/lib/analytics';
+
+// ─── State diffing (GA4 Measurement Protocol) ─────────────────────────────────
+
+type CaseSnapshot = { stage: string; compensacion: number };
+type StateBlob    = Record<string, CaseSnapshot>;
+
+const STATE_PATH = 'aeroreclaim/cases-state.json';
+
+async function loadPreviousState(): Promise<StateBlob> {
+  try {
+    const { blobs } = await list({ prefix: 'aeroreclaim/cases-state' });
+    if (blobs.length === 0) return {};
+    const res = await fetch(blobs[0].url, { cache: 'no-store' });
+    if (!res.ok) return {};
+    return await res.json() as StateBlob;
+  } catch {
+    return {};
+  }
+}
+
+async function saveState(state: StateBlob): Promise<void> {
+  await put(STATE_PATH, JSON.stringify(state), {
+    access: 'public',
+    addRandomSuffix: false,
+    contentType: 'application/json',
+  });
+}
+
+async function diffAndTrack(cases: AeroCaso[]): Promise<void> {
+  const [prev] = await Promise.all([loadPreviousState()]);
+
+  const next: StateBlob = {};
+  const events: Promise<void>[] = [];
+
+  for (const c of cases) {
+    next[c.id] = { stage: c.estadoActual, compensacion: c.compensacion };
+
+    if (!prev[c.id]) {
+      // New case
+      events.push(trackEvent('case_created', {
+        case_id:      c.id,
+        airline_code: c.vuelo.slice(0, 2).toUpperCase(),
+      }));
+    } else if (prev[c.id].stage !== c.estadoActual) {
+      const stage = c.estadoActual;
+
+      if (stage === 'Respuesta Aerolínea') {
+        events.push(trackEvent('airline_response', {
+          case_id: c.id,
+          outcome: 'received',
+        }));
+      }
+
+      if (stage === 'Cobro' || stage === 'Cerrado') {
+        events.push(trackEvent('case_closed', {
+          case_id:            c.id,
+          compensation_amount: c.compensacion,
+        }));
+      }
+    }
+  }
+
+  await Promise.all([...events, saveState(next)]);
+}
 
 // ─── Hardcoded fallback (Alicia Zunzunegui – UX52 HAV→MAD 05/Feb/2026) ────────
 
@@ -227,6 +293,10 @@ export async function GET() {
     const sheetsCases = await fetchFromSheets();
     const cases  = sheetsCases ?? [ALICIA_CASE];
     const source = sheetsCases ? 'sheets' : 'fallback';
+
+    // Fire-and-forget: diff state and send GA4 events — never blocks response
+    void diffAndTrack(cases).catch(() => {});
+
     return NextResponse.json({ cases, source });
   } catch (err) {
     console.error('[cases] Route error:', err);

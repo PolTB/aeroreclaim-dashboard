@@ -1,6 +1,14 @@
 import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import type { CommandArchivoTipo } from '@/types';
+import { trackEvent } from '@/lib/analytics';
+
+const IATA_RE = /\b(UX|VY|FR|IB|I2|VU|TP|BA|AF|LH|U2|W6|D8|NT)\b/i;
+
+function extractAirlineCode(filename: string): string {
+  const match = filename.toUpperCase().match(IATA_RE);
+  return match ? match[1].toUpperCase() : 'UNKNOWN';
+}
 
 const ALLOWED_TYPES: Record<string, CommandArchivoTipo> = {
   'image/jpeg': 'imagen',
@@ -35,6 +43,13 @@ export async function POST(request: Request) {
       access: 'public',
       addRandomSuffix: true,
     });
+
+    if (detectedTipo === 'PDF') {
+      void trackEvent('letter_sent', {
+        airline_code: extractAirlineCode(file.name),
+        filename:     file.name,
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ url: blob.url, tipo: detectedTipo });
   } catch (err) {
