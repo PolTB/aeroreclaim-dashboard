@@ -21,6 +21,7 @@ import { QuickInbox } from './QuickInbox';
 import { CaseTracker } from './CaseTracker';
 import { RoadmapTimeline } from './RoadmapTimeline';
 import { PhaseBacklog } from './PhaseBacklog';
+import { ProximasTareas } from './ProximasTareas';
 import { BlogCalendar } from './BlogCalendar';
 import type { Phase } from './RoadmapTimeline';
 
@@ -308,6 +309,7 @@ export function Dashboard() {
             {view === 'roadmap' && (
               <motion.div key="roadmap" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col gap-5">
                 <RoadmapTimeline onSelectPhase={setSelectedPhase} activePhaseId={selectedPhase?.id} />
+                <ProximasTareas tasks={tasks} />
                 <PhaseBacklog tasks={tasks} activePhase={selectedPhase} />
               </motion.div>
             )}
