@@ -2,7 +2,6 @@ import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { trackEvent } from '@/lib/analytics';
 import type { CommandArchivoTipo } from '@/types';
-import { trackEvent } from '@/lib/analytics';
 
 const IATA_RE = /\b(UX|VY|FR|IB|I2|VU|TP|BA|AF|LH|U2|W6|D8|NT)\b/i;
 
