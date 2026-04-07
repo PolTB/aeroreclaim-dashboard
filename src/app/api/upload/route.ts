@@ -1,5 +1,6 @@
 import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
+import { trackEvent } from '@/lib/analytics';
 import type { CommandArchivoTipo } from '@/types';
 import { trackEvent } from '@/lib/analytics';
 
