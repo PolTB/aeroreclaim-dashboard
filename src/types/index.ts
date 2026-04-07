@@ -238,6 +238,8 @@ export interface AeroCaso {
   ultimaActualizacion: string;
   pipeline: Record<PipelineStage, StageInfo>;
   notaInterna?: string;
+  /** Fecha en que se envió el email de bienvenida (ISO date string) */
+  welcome_sent_date?: string | null;
 }
 
 // ─── Blog Calendar types ───────────────────────────────────────────────────────

@@ -2,6 +2,14 @@ import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { trackEvent } from '@/lib/analytics';
 import type { CommandArchivoTipo } from '@/types';
+import { trackEvent } from '@/lib/analytics';
+
+const IATA_RE = /\b(UX|VY|FR|IB|I2|VU|TP|BA|AF|LH|U2|W6|D8|NT)\b/i;
+
+function extractAirlineCode(filename: string): string {
+  const match = filename.toUpperCase().match(IATA_RE);
+  return match ? match[1].toUpperCase() : 'UNKNOWN';
+}
 
 const ALLOWED_TYPES: Record<string, CommandArchivoTipo> = {
   'image/jpeg': 'imagen',
@@ -37,14 +45,11 @@ export async function POST(request: Request) {
       addRandomSuffix: true,
     });
 
-    // Funnel: letter_sent — fire when a PDF is uploaded (proxy for carta aerolínea)
     if (detectedTipo === 'PDF') {
-      const airlineMatch = file.name.match(/^([A-Z]{2})/i);
-      await trackEvent('letter_sent', {
-        event_category: 'funnel',
-        airline_code: airlineMatch ? airlineMatch[1].toUpperCase() : 'unknown',
-        file_name: file.name,
-      });
+      void trackEvent('letter_sent', {
+        airline_code: extractAirlineCode(file.name),
+        filename:     file.name,
+      }).catch(() => {});
     }
 
     return NextResponse.json({ url: blob.url, tipo: detectedTipo });
