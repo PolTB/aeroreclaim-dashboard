@@ -1,5 +1,6 @@
 import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
+import { trackEvent } from '@/lib/analytics';
 import type { CommandArchivoTipo } from '@/types';
 
 const ALLOWED_TYPES: Record<string, CommandArchivoTipo> = {
@@ -35,6 +36,16 @@ export async function POST(request: Request) {
       access: 'public',
       addRandomSuffix: true,
     });
+
+    // Funnel: letter_sent — fire when a PDF is uploaded (proxy for carta aerolínea)
+    if (detectedTipo === 'PDF') {
+      const airlineMatch = file.name.match(/^([A-Z]{2})/i);
+      await trackEvent('letter_sent', {
+        event_category: 'funnel',
+        airline_code: airlineMatch ? airlineMatch[1].toUpperCase() : 'unknown',
+        file_name: file.name,
+      });
+    }
 
     return NextResponse.json({ url: blob.url, tipo: detectedTipo });
   } catch (err) {
