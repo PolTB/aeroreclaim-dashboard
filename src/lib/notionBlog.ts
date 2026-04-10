@@ -48,7 +48,7 @@ function parseBlogEntry(page: PageObjectResponse): BlogEntry {
 
   return {
     id: page.id,
-    titulo: getTitle(props, 'Titulo'),
+    titulo: getTitle(props, 'Título'),
     fechaPublicacion: getDate(props, 'Fecha_Publicacion'),
     estado,
     tag: getSelect(props, 'Tag'),
