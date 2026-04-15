@@ -24,8 +24,14 @@ function parseEntries(blocks: { type: string; paragraph?: { rich_text: { plain_t
   let current: BandejaEntry | null = null;
 
   for (const block of blocks) {
-    if (block.type !== 'paragraph') continue;
-    const text = block.paragraph?.rich_text?.map((r) => r.plain_text).join('') ?? '';
+    // Accept paragraph, heading_1, heading_2, heading_3 blocks
+    const richText = block.type === 'paragraph' ? block.paragraph?.rich_text
+      : block.type === 'heading_1' ? (block as { heading_1?: { rich_text: { plain_text: string }[] } }).heading_1?.rich_text
+      : block.type === 'heading_2' ? (block as { heading_2?: { rich_text: { plain_text: string }[] } }).heading_2?.rich_text
+      : block.type === 'heading_3' ? (block as { heading_3?: { rich_text: { plain_text: string }[] } }).heading_3?.rich_text
+      : null;
+    if (!richText) continue;
+    const text = richText.map((r) => r.plain_text).join('');
     if (!text.trim()) continue;
 
     if (text.startsWith('📅')) {
@@ -34,9 +40,10 @@ function parseEntries(blocks: { type: string; paragraph?: { rich_text: { plain_t
       continue;
     }
 
-    const okMatch = text.match(/^✅\s+(AER-\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
-    const warnMatch = text.match(/^⚠️\s+(AER-\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
-    const urgentMatch = text.match(/^🔴\s+(AER-\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
+    // Accept any ref (AER-XX, AR-XXXX, PAT-GITHUB, etc.) and both — and –
+    const okMatch = text.match(/^✅\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
+    const warnMatch = text.match(/^⚠️\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
+    const urgentMatch = text.match(/^🔴\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
 
     const match = okMatch || warnMatch || urgentMatch;
     const type = okMatch ? 'ok' : warnMatch ? 'warning' : urgentMatch ? 'urgent' : null;
