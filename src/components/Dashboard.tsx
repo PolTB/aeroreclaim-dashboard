@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutGrid, BarChart2, Terminal, Settings, RefreshCw, Plus,
-  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map, BookOpen,
+  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map, BookOpen, Inbox,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -23,9 +23,10 @@ import { RoadmapTimeline } from './RoadmapTimeline';
 import { PhaseBacklog } from './PhaseBacklog';
 import { ProximasTareas } from './ProximasTareas';
 import { BlogCalendar } from './BlogCalendar';
+import { BandejaPol } from './BandejaPol';
 import type { Phase } from './RoadmapTimeline';
 
-type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'roadmap' | 'blog' | 'settings';
+type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'roadmap' | 'blog' | 'bandeja' | 'settings';
 
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
   { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
@@ -34,6 +35,7 @@ const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabe
   { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
   { id: 'roadmap',   label: 'Roadmap',   shortLabel: 'Road',      icon: <Map size={13} /> },
   { id: 'blog',      label: 'Blog',      shortLabel: 'Blog',      icon: <BookOpen size={13} /> },
+  { id: 'bandeja',   label: 'Bandeja',   shortLabel: 'Bandeja',   icon: <Inbox size={13} /> },
   { id: 'settings',  label: 'Settings',  shortLabel: 'Config',    icon: <Settings size={13} /> },
 ];
 
@@ -192,7 +194,7 @@ export function Dashboard() {
   );
 
   const showTaskViews = view === 'kanban' || view === 'timeline';
-  const showFullWidth = view === 'commands' || view === 'cases' || view === 'roadmap' || view === 'blog' || view === 'settings';
+  const showFullWidth = view === 'commands' || view === 'cases' || view === 'roadmap' || view === 'blog' || view === 'bandeja' || view === 'settings';
 
   if (loading) {
     return (
@@ -316,6 +318,11 @@ export function Dashboard() {
             {view === 'blog' && (
               <motion.div key="blog" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <BlogCalendar />
+              </motion.div>
+            )}
+            {view === 'bandeja' && (
+              <motion.div key="bandeja" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <BandejaPol />
               </motion.div>
             )}
             {view === 'settings' && (
