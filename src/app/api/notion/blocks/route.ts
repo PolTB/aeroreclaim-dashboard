@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NOTION_API_KEY = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY ?? '';
+// NOTION_CEO_TOKEN = token CEO (ntn_371355748712...) — acceso completo al workspace
+// NOTION_TOKEN = token integración dashboard — acceso limitado a páginas compartidas
+const NOTION_API_KEY = process.env.NOTION_CEO_TOKEN ?? process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY ?? '';
 
 export async function GET(req: NextRequest) {
   const pageId = req.nextUrl.searchParams.get('pageId');
