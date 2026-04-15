@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY ?? '';
+const NOTION_API_KEY = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY ?? '';
 
 export async function GET(req: NextRequest) {
   const pageId = req.nextUrl.searchParams.get('pageId');
