@@ -104,7 +104,7 @@ export function BandejaPol() {
     setDoneItems(prev => {
       const next = new Set(prev);
       next.add(key);
-      try { localStorage.setItem('bandeja_done', JSON.stringify([...next])); } catch { /* */ }
+      try { localStorage.setItem('bandeja_done', JSON.stringify(Array.from(next))); } catch { /* */ }
       return next;
     });
     setMarking(null);
