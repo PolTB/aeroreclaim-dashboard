@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Inbox, CheckCircle2, AlertTriangle, XCircle, Archive, RefreshCw } from 'lucide-react';
+import { Inbox, CheckCircle2, AlertTriangle, XCircle, Archive, RefreshCw, Check } from 'lucide-react';
 import clsx from 'clsx';
 
 const BANDEJA_PAGE_ID = '3438a573-e757-819c-8985-f031ec4b9a82';
@@ -62,6 +62,11 @@ export function BandejaPol() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [doneItems, setDoneItems] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem('bandeja_done') ?? '[]')); } catch { return new Set(); }
+  });
+  const [marking, setMarking] = useState<string | null>(null);
 
   async function load(silent = false) {
     if (silent) setRefreshing(true);
@@ -81,6 +86,29 @@ export function BandejaPol() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function markDone(entryDate: string, item: BandejaItem) {
+    const key = `${entryDate}__${item.ref}`;
+    setMarking(key);
+    const now = new Date();
+    const ts = now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ' ' + now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const logText = `✅ Pol actuó — ${item.ref} — ${item.contact} — ${ts}`;
+    try {
+      await fetch('/api/notion/blocks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: BANDEJA_PAGE_ID, text: logText }),
+      });
+    } catch { /* silencio — el estado local ya refleja la acción */ }
+    setDoneItems(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      try { localStorage.setItem('bandeja_done', JSON.stringify([...next])); } catch { /* */ }
+      return next;
+    });
+    setMarking(null);
+  }
 
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const active = entries.filter((e) => { const d = new Date(e.date); return isNaN(d.getTime()) || d >= cutoff; });
@@ -143,28 +171,46 @@ export function BandejaPol() {
       {active.map((entry) => (
         <div key={entry.id} className="bg-surface-card border border-edge/60 rounded-xl p-4 space-y-2.5">
           <p className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider">📅 {entry.date}</p>
-          {entry.items.map((item, i) => (
-            <div key={i} className={clsx(
-              'flex items-start gap-2.5 rounded-lg px-3 py-2.5',
-              item.type === 'ok' && 'bg-emerald-500/6 border border-emerald-500/15',
-              item.type === 'warning' && 'bg-amber-500/6 border border-amber-500/15',
-              item.type === 'urgent' && 'bg-red-500/6 border border-red-500/15',
-            )}>
-              {item.type === 'ok' && <CheckCircle2 size={13} className="text-emerald-400 mt-0.5 shrink-0" />}
-              {item.type === 'warning' && <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />}
-              {item.type === 'urgent' && <XCircle size={13} className="text-red-400 mt-0.5 shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <span className="text-xs font-mono font-semibold text-ink mr-2">{item.ref}</span>
-                <span className="text-xs text-ink-secondary mr-2">— {item.contact} —</span>
-                <span className={clsx(
-                  'text-xs font-medium',
-                  item.type === 'ok' && 'text-emerald-400',
-                  item.type === 'warning' && 'text-amber-400',
-                  item.type === 'urgent' && 'text-red-400',
-                )}>{item.message}</span>
+          {entry.items.map((item, i) => {
+            const key = `${entry.date}__${item.ref}`;
+            const done = doneItems.has(key);
+            const isMarking = marking === key;
+            return (
+              <div key={i} className={clsx(
+                'flex items-start gap-2.5 rounded-lg px-3 py-2.5 transition-opacity',
+                done && 'opacity-40',
+                !done && item.type === 'ok' && 'bg-emerald-500/6 border border-emerald-500/15',
+                !done && item.type === 'warning' && 'bg-amber-500/6 border border-amber-500/15',
+                !done && item.type === 'urgent' && 'bg-red-500/6 border border-red-500/15',
+                done && 'bg-surface-elevated border border-edge/30',
+              )}>
+                {!done && item.type === 'ok' && <CheckCircle2 size={13} className="text-emerald-400 mt-0.5 shrink-0" />}
+                {!done && item.type === 'warning' && <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />}
+                {!done && item.type === 'urgent' && <XCircle size={13} className="text-red-400 mt-0.5 shrink-0" />}
+                {done && <Check size={13} className="text-ink-faint mt-0.5 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <span className={clsx('text-xs font-mono font-semibold mr-2', done ? 'text-ink-faint line-through' : 'text-ink')}>{item.ref}</span>
+                  <span className="text-xs text-ink-muted mr-2">— {item.contact} —</span>
+                  <span className={clsx(
+                    'text-xs font-medium',
+                    done ? 'text-ink-faint line-through' : item.type === 'ok' ? 'text-emerald-400' : item.type === 'warning' ? 'text-amber-400' : 'text-red-400',
+                  )}>{item.message}</span>
+                  {done && <span className="ml-2 text-[10px] text-ink-faint">· Pol actuó</span>}
+                </div>
+                {!done && (
+                  <button
+                    onClick={() => markDone(entry.date, item)}
+                    disabled={isMarking}
+                    className="ml-1 shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-surface-elevated border border-edge/60 text-ink-muted hover:text-ink-secondary hover:border-edge transition-all disabled:opacity-50"
+                    title="Marcar como hecho"
+                  >
+                    {isMarking ? <RefreshCw size={9} className="animate-spin" /> : <Check size={9} />}
+                    Hecho
+                  </button>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ))}
 

@@ -4,6 +4,33 @@ import { NextRequest, NextResponse } from 'next/server';
 // NOTION_TOKEN = token integración dashboard — acceso limitado a páginas compartidas
 const NOTION_API_KEY = process.env.NOTION_CEO_TOKEN ?? process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY ?? '';
 
+export async function POST(req: NextRequest) {
+  const { pageId, text } = await req.json();
+  if (!pageId || !text) return NextResponse.json({ error: 'Missing pageId or text' }, { status: 400 });
+
+  const res = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${NOTION_API_KEY}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      children: [{
+        object: 'block',
+        type: 'paragraph',
+        paragraph: { rich_text: [{ type: 'text', text: { content: text } }] },
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    return NextResponse.json({ error: err }, { status: res.status });
+  }
+  return NextResponse.json({ success: true });
+}
+
 export async function GET(req: NextRequest) {
   const pageId = req.nextUrl.searchParams.get('pageId');
   if (!pageId) return NextResponse.json({ error: 'Missing pageId' }, { status: 400 });
