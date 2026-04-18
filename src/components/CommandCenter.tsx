@@ -201,7 +201,7 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97, y: 8 }}
           transition={{ duration: 0.15 }}
-          className="w-full max-w-lg bg-surface-card border border-edge rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
+          className="w-full max-w-lg bg-surface-card border border-edge rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
