@@ -287,11 +287,10 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
               <AnimatePresence>
                 {detallesOpen && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.12 }}
                   >
                     <div className="px-3.5 py-3 grid grid-cols-2 gap-3 border-t border-edge/30">
                       <div>
