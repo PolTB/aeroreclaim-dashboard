@@ -1,6 +1,6 @@
 import { Client } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
-import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CommandArchivoTipo, CreateCommandPayload, UpdateCommandPayload } from '@/types';
+import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload, UpdateCommandPayload } from '@/types';
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const DB_ID = process.env.COMMANDS_DATABASE_ID!;
@@ -39,6 +39,8 @@ function parseNotionCommand(page: PageObjectResponse): NotionCommand {
     estado: (getSelect(props, 'Estado') ?? 'Pendiente') as CommandEstado,
     respuesta: getRichText(props, 'Respuesta'),
     prioridad: getSelect(props, 'Prioridad') as CommandPrioridad | null,
+    modelo: getSelect(props, 'Modelo') as CommandModelo | null,
+    esfuerzo: getSelect(props, 'Esfuerzo') as CommandEsfuerzo | null,
     fechaCreacion: getDate(props, 'Fecha_Creacion'),
     fechaCompletado: getDate(props, 'Fecha_Completado'),
     url: page.url,
@@ -79,6 +81,8 @@ export async function createCommand(payload: CreateCommandPayload): Promise<void
   if (payload.destinatario) properties['Destinatario'] = { select: { name: payload.destinatario } };
   if (payload.subchat) properties['Subchat'] = { rich_text: [{ text: { content: payload.subchat } }] };
   if (payload.prioridad) properties['Prioridad'] = { select: { name: payload.prioridad } };
+  if (payload.modelo) properties['Modelo'] = { select: { name: payload.modelo } };
+  if (payload.esfuerzo) properties['Esfuerzo'] = { select: { name: payload.esfuerzo } };
   if (payload.archivoUrl) properties['Archivo_URL'] = { url: payload.archivoUrl };
   if (payload.archivoTipo) properties['Archivo_Tipo'] = { select: { name: payload.archivoTipo } };
 
@@ -99,6 +103,7 @@ function toRichTextBlocks(text: string) {
 export async function updateCommand(id: string, updates: UpdateCommandPayload): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const properties: any = {};
+  if (updates.titulo !== undefined) properties['Titulo'] = { title: [{ text: { content: updates.titulo } }] };
   if (updates.estado !== undefined) properties['Estado'] = { select: { name: updates.estado } };
   if (updates.respuesta !== undefined) properties['Respuesta'] = { rich_text: toRichTextBlocks(updates.respuesta) };
   if (updates.fechaCompletado !== undefined) {
@@ -107,6 +112,8 @@ export async function updateCommand(id: string, updates: UpdateCommandPayload): 
   if (updates.subchat !== undefined) properties['Subchat'] = { rich_text: toRichTextBlocks(updates.subchat) };
   if (updates.destinatario !== undefined) properties['Destinatario'] = updates.destinatario ? { select: { name: updates.destinatario } } : { select: null };
   if (updates.prioridad !== undefined) properties['Prioridad'] = updates.prioridad ? { select: { name: updates.prioridad } } : { select: null };
+  if (updates.modelo !== undefined) properties['Modelo'] = updates.modelo ? { select: { name: updates.modelo } } : { select: null };
+  if (updates.esfuerzo !== undefined) properties['Esfuerzo'] = updates.esfuerzo ? { select: { name: updates.esfuerzo } } : { select: null };
   if (updates.archivoUrl !== undefined) properties['Archivo_URL'] = updates.archivoUrl ? { url: updates.archivoUrl } : { url: null };
   if (updates.archivoTipo !== undefined) properties['Archivo_Tipo'] = updates.archivoTipo ? { select: { name: updates.archivoTipo } } : { select: null };
   await notion.pages.update({ page_id: id, properties });

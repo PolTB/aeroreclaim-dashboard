@@ -3,156 +3,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown,
-  RefreshCw, Loader2, Check, Bot, Send, History, AlertTriangle,
-  Inbox, Ban, ArrowLeftRight, X, MessageSquare, Trash2, Paperclip, Link, ExternalLink
+  Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown, ChevronRight,
+  RefreshCw, Loader2, Check, History, AlertTriangle,
+  Inbox, Ban, X, Trash2, Paperclip, ExternalLink, Image as ImageIcon,
+  FolderOpen, Cpu, Send,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { NotionCommand, CommandEstado, CommandDestinatario, CommandPrioridad, CommandArchivoTipo, CreateCommandPayload } from '@/types';
+import type {
+  NotionCommand, CommandEstado, CommandDestinatario, CommandPrioridad,
+  CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload,
+} from '@/types';
 import {
   COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG, COMMAND_ESTADO_ORDER,
-  ACTIVE_ESTADOS, ARCHIVED_ESTADOS, COMMAND_ARCHIVO_TIPOS
+  ACTIVE_ESTADOS, ARCHIVED_ESTADOS, COMMAND_ARCHIVO_TIPOS,
 } from '@/types';
 
-// ─── Estado badge ──────────────────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────────
 
-const ESTADO_ICONS: Record<CommandEstado, React.ReactNode> = {
-  'Pendiente':            <Clock size={10} />,
-  'En Proceso':           <Loader2 size={10} className="animate-spin" />,
-  'Respuesta Recibida':   <Inbox size={10} />,
-  'Completado':           <Check size={10} />,
-  'Bloqueado':            <AlertTriangle size={10} />,
-  'Cancelado':            <Ban size={10} />,
+const COMMAND_MODELOS: CommandModelo[] = ['Sonnet', 'Opus', 'Haiku'];
+const COMMAND_ESFUERZOS: CommandEsfuerzo[] = ['Baja', 'Media', 'Alta'];
+
+const MODELO_CONFIG: Record<CommandModelo, { color: string; bg: string }> = {
+  Sonnet: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+  Opus:   { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+  Haiku:  { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
 };
-
-function EstadoBadge({ estado }: { estado: CommandEstado }) {
-  const cfg = COMMAND_ESTADO_CONFIG[estado] ?? COMMAND_ESTADO_CONFIG['Pendiente'];
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
-      style={{ color: cfg.color, backgroundColor: cfg.bg }}
-    >
-      {ESTADO_ICONS[estado] ?? <Clock size={10} />}
-      {cfg.label}
-    </span>
-  );
-}
-
-// ─── Estado Selector (bidirectional) ────────────────────────────────────────────
-
-function EstadoSelector({
-  current,
-  onSelect,
-  disabled,
-}: {
-  current: CommandEstado;
-  onSelect: (estado: CommandEstado) => void;
-  disabled: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const allEstados = Object.keys(COMMAND_ESTADO_CONFIG) as CommandEstado[];
-  const otherEstados = allEstados.filter(e => e !== current);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        disabled={disabled}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] font-medium text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
-      >
-        <ArrowLeftRight size={11} />
-        Cambiar estado
-        <ChevronDown size={10} className={clsx('transition-transform', open && 'rotate-180')} />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-            transition={{ duration: 0.12 }}
-            className="absolute z-50 bottom-full mb-1 left-0 bg-surface-card border border-edge rounded-xl shadow-xl min-w-[200px] py-1 overflow-hidden"
-          >
-            {otherEstados.map(estado => {
-              const cfg = COMMAND_ESTADO_CONFIG[estado];
-              return (
-                <button
-                  key={estado}
-                  onClick={() => { onSelect(estado); setOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-elevated transition-colors"
-                >
-                  <span
-                    className="inline-flex items-center justify-center w-5 h-5 rounded-full"
-                    style={{ color: cfg.color, backgroundColor: cfg.bg }}
-                  >
-                    {ESTADO_ICONS[estado]}
-                  </span>
-                  <div>
-                    <p className="text-xs font-medium text-ink">{cfg.label}</p>
-                    <p className="text-[10px] text-ink-faint">{cfg.description}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ─── Confirm Dialog ───────────────────────────────────────────────────────────
-
-interface ConfirmDialogProps {
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogProps) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-surface-card border border-edge rounded-xl shadow-2xl p-5 max-w-sm w-full"
-      >
-        <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
-          <p className="text-sm text-ink">{message}</p>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-xs text-ink-muted hover:text-ink rounded-lg transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 bg-danger/15 text-danger text-xs font-medium rounded-lg hover:bg-danger/25 transition-colors"
-          >
-            Eliminar
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-// ─── Destinatario badge ────────────────────────────────────────────────────────
 
 const DEST_COLORS: Record<string, string> = {
   'Claude CoWork': '#8b5cf6',
@@ -163,97 +40,93 @@ const DEST_COLORS: Record<string, string> = {
   'Manual':        '#6b7280',
 };
 
-function DestBadge({ dest }: { dest: CommandDestinatario | null }) {
-  if (!dest) return null;
-  const color = DEST_COLORS[dest] ?? '#6b7280';
+const ESTADO_ICONS: Record<CommandEstado, React.ReactNode> = {
+  'Pendiente':          <Clock size={10} />,
+  'En Proceso':         <Loader2 size={10} className="animate-spin" />,
+  'Respuesta Recibida': <Inbox size={10} />,
+  'Completado':         <Check size={10} />,
+  'Bloqueado':          <AlertTriangle size={10} />,
+  'Cancelado':          <Ban size={10} />,
+};
+
+// ─── Estado badge ──────────────────────────────────────────────────────────────
+
+function EstadoBadge({ estado }: { estado: CommandEstado }) {
+  const cfg = COMMAND_ESTADO_CONFIG[estado] ?? COMMAND_ESTADO_CONFIG['Pendiente'];
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
-      style={{ color, backgroundColor: color + '20' }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
+      style={{ color: cfg.color, backgroundColor: cfg.bg }}
     >
-      <Bot size={10} />
-      {dest}
+      {ESTADO_ICONS[estado] ?? <Clock size={10} />}
+      {cfg.label}
     </span>
   );
 }
 
-// ─── Delegación Card ────────────────────────────────────────────────────────────
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
 
-interface CommandCardProps {
+function ConfirmDialog({ message, onConfirm, onCancel }: {
+  message: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-surface-card border border-edge rounded-xl shadow-2xl p-5 max-w-sm w-full"
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
+          <p className="text-sm text-ink">{message}</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="px-4 py-2 text-xs text-ink-muted hover:text-ink rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button onClick={onConfirm} className="px-4 py-2 bg-danger/15 text-danger text-xs font-medium rounded-lg hover:bg-danger/25 transition-colors">
+            Eliminar
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── Command Detail Modal ─────────────────────────────────────────────────────
+
+interface CommandDetailModalProps {
   command: NotionCommand;
+  onClose: () => void;
   onUpdate: (id: string, updates: Partial<NotionCommand>) => Promise<void>;
   onDelete: (id: string) => void;
   onCopyPrompt: (text: string) => void;
 }
 
-function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardProps) {
-  const [expanded, setExpanded] = useState(false);
+function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt }: CommandDetailModalProps) {
+  const [titulo, setTitulo] = useState(command.titulo);
+  const [destinatario, setDestinatario] = useState<CommandDestinatario | null>(command.destinatario);
+  const [estado, setEstado] = useState<CommandEstado>(command.estado);
+  const [prioridad, setPrioridad] = useState<CommandPrioridad | null>(command.prioridad);
+  const [modelo, setModelo] = useState<CommandModelo>(command.modelo ?? 'Sonnet');
+  const [esfuerzo, setEsfuerzo] = useState<CommandEsfuerzo | null>(command.esfuerzo);
   const [respuesta, setRespuesta] = useState(command.respuesta);
   const [subchat, setSubchat] = useState(command.subchat || '');
   const [archivoUrl, setArchivoUrl] = useState(command.archivoUrl || '');
   const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>(command.archivoTipo || '');
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [detallesOpen, setDetallesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
-  async function changeEstado(estado: CommandEstado) {
-    setSaving(true);
-    try {
-      const updates: Partial<NotionCommand> = { estado };
-      if (estado === 'Completado') {
-        updates.fechaCompletado = new Date().toISOString().split('T')[0];
-      }
-      if (estado === 'Pendiente') {
-        updates.fechaCompletado = null;
-      }
-      await onUpdate(command.id, updates);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveRespuesta() {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onUpdate(command.id, {
-        respuesta,
-        estado: 'Respuesta Recibida',
-      });
-    } catch {
-      setSaveError('Error al guardar. Intenta de nuevo.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveSubchat() {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onUpdate(command.id, { subchat });
-    } catch {
-      setSaveError('Error al guardar subchat.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveArchivo() {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onUpdate(command.id, {
-        archivoUrl: archivoUrl.trim() || null,
-        archivoTipo: (archivoTipo || null) as CommandArchivoTipo | null,
-      });
-    } catch {
-      setSaveError('Error al guardar archivo.');
-    } finally {
-      setSaving(false);
-    }
+  function copyPrompt() {
+    onCopyPrompt(command.prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -269,59 +142,415 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       setArchivoUrl(data.url);
       setArchivoTipo(data.tipo);
-      await onUpdate(command.id, { archivoUrl: data.url, archivoTipo: data.tipo });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Error al subir archivo.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (imageInputRef.current) imageInputRef.current.value = '';
     }
   }
 
-  function copyPrompt() {
-    onCopyPrompt(command.prompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updates: any = {};
+      if (titulo !== command.titulo) updates.titulo = titulo;
+      if (destinatario !== command.destinatario) updates.destinatario = destinatario;
+      if (estado !== command.estado) {
+        updates.estado = estado;
+        if (estado === 'Completado') updates.fechaCompletado = new Date().toISOString().split('T')[0];
+        if (estado === 'Pendiente') updates.fechaCompletado = null;
+      }
+      if (prioridad !== command.prioridad) updates.prioridad = prioridad;
+      if (modelo !== (command.modelo ?? 'Sonnet')) updates.modelo = modelo;
+      if (esfuerzo !== command.esfuerzo) updates.esfuerzo = esfuerzo;
+      if (respuesta !== command.respuesta) {
+        updates.respuesta = respuesta;
+        if (respuesta.trim() && estado === 'En Proceso') updates.estado = 'Respuesta Recibida';
+      }
+      if (subchat !== (command.subchat || '')) updates.subchat = subchat;
+      if (archivoUrl !== (command.archivoUrl || '')) updates.archivoUrl = archivoUrl || null;
+      if (archivoTipo !== (command.archivoTipo || '')) updates.archivoTipo = (archivoTipo || null) as CommandArchivoTipo | null;
+
+      if (Object.keys(updates).length > 0) {
+        await onUpdate(command.id, updates);
+      }
+      onClose();
+    } catch {
+      setSaveError('Error al guardar. Intenta de nuevo.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const isArchived = ARCHIVED_ESTADOS.includes(command.estado);
-  const showRespuestaInput = !isArchived && command.estado !== 'Cancelado';
+  const destColor = destinatario ? (DEST_COLORS[destinatario] ?? '#6b7280') : undefined;
+  const modeloCfg = MODELO_CONFIG[modelo];
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.97, y: 8 }}
+          transition={{ duration: 0.15 }}
+          className="w-full max-w-lg bg-surface-card border border-edge rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-edge/40 shrink-0">
+            <div className="flex items-center gap-2">
+              <Terminal size={13} className="text-accent" />
+              <span className="text-xs font-medium text-ink-muted">Delegación</span>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-elevated transition-all"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+
+            {/* Editable title */}
+            <input
+              value={titulo}
+              onChange={e => setTitulo(e.target.value)}
+              className="w-full bg-transparent border border-accent/50 rounded-lg px-3 py-2 text-sm font-medium text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent transition-colors"
+              placeholder="Título de la delegación..."
+            />
+
+            {/* 3 inline pill selects */}
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={destinatario ?? ''}
+                onChange={e => setDestinatario((e.target.value as CommandDestinatario) || null)}
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60 cursor-pointer transition-all"
+                style={destinatario ? { color: destColor, borderColor: destColor + '50' } : { color: 'var(--color-ink-secondary)' }}
+              >
+                <option value="">Sin asignar</option>
+                {COMMAND_DESTINATARIOS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select
+                value={estado}
+                onChange={e => setEstado(e.target.value as CommandEstado)}
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60 cursor-pointer transition-all"
+                style={{
+                  color: COMMAND_ESTADO_CONFIG[estado]?.color,
+                  borderColor: (COMMAND_ESTADO_CONFIG[estado]?.color ?? '#6b7280') + '50',
+                }}
+              >
+                {Object.keys(COMMAND_ESTADO_CONFIG).map(e => (
+                  <option key={e} value={e}>{COMMAND_ESTADO_CONFIG[e as CommandEstado].label}</option>
+                ))}
+              </select>
+              <select
+                value={prioridad ?? ''}
+                onChange={e => setPrioridad((e.target.value as CommandPrioridad) || null)}
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60 cursor-pointer transition-all"
+                style={prioridad ? {
+                  color: prioridad === 'Alta' ? '#ef4444' : prioridad === 'Media' ? '#eab308' : '#22c55e',
+                  borderColor: (prioridad === 'Alta' ? '#ef4444' : prioridad === 'Media' ? '#eab308' : '#22c55e') + '50',
+                } : { color: 'var(--color-ink-secondary)' }}
+              >
+                <option value="">Sin prioridad</option>
+                <option value="Alta">Alta</option>
+                <option value="Media">Media</option>
+                <option value="Baja">Baja</option>
+              </select>
+            </div>
+
+            {/* Collapsible Detalles del agente */}
+            <div className="border border-edge/40 rounded-xl overflow-hidden">
+              <button
+                onClick={() => setDetallesOpen(v => !v)}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 bg-surface-elevated/40 hover:bg-surface-elevated transition-colors text-left"
+              >
+                <span className="text-[11px] font-semibold text-ink-muted uppercase tracking-wider flex items-center gap-1.5">
+                  <Cpu size={11} className="text-accent/70" />
+                  Detalles del agente
+                </span>
+                <ChevronDown
+                  size={12}
+                  className={clsx('text-ink-muted transition-transform', detallesOpen && 'rotate-180')}
+                />
+              </button>
+              <AnimatePresence>
+                {detallesOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-3.5 py-3 grid grid-cols-2 gap-3 border-t border-edge/30">
+                      <div>
+                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Destinatario</label>
+                        <select
+                          value={destinatario ?? ''}
+                          onChange={e => setDestinatario((e.target.value as CommandDestinatario) || null)}
+                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
+                        >
+                          <option value="">Sin asignar</option>
+                          {COMMAND_DESTINATARIOS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Estado</label>
+                        <select
+                          value={estado}
+                          onChange={e => setEstado(e.target.value as CommandEstado)}
+                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
+                        >
+                          {Object.keys(COMMAND_ESTADO_CONFIG).map(e => (
+                            <option key={e} value={e}>{COMMAND_ESTADO_CONFIG[e as CommandEstado].label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Prioridad</label>
+                        <select
+                          value={prioridad ?? ''}
+                          onChange={e => setPrioridad((e.target.value as CommandPrioridad) || null)}
+                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
+                        >
+                          <option value="">Sin prioridad</option>
+                          <option value="Alta">Alta</option>
+                          <option value="Media">Media</option>
+                          <option value="Baja">Baja</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-ink-faint font-medium block mb-1">
+                          Modelo IA
+                        </label>
+                        <select
+                          value={modelo}
+                          onChange={e => setModelo(e.target.value as CommandModelo)}
+                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60"
+                          style={{ color: modeloCfg.color }}
+                        >
+                          {COMMAND_MODELOS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Esfuerzo</label>
+                        <select
+                          value={esfuerzo ?? ''}
+                          onChange={e => setEsfuerzo((e.target.value as CommandEsfuerzo) || null)}
+                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
+                        >
+                          <option value="">Sin definir</option>
+                          {COMMAND_ESFUERZOS.map(e => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Subchat</label>
+                        <input
+                          value={subchat}
+                          onChange={e => setSubchat(e.target.value)}
+                          placeholder="Nombre del chat..."
+                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Prompt */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">Prompt</span>
+                <button
+                  onClick={copyPrompt}
+                  className={clsx(
+                    'flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md transition-all',
+                    copied ? 'bg-success/20 text-success' : 'bg-surface-elevated text-ink-muted hover:text-ink-secondary',
+                  )}
+                >
+                  {copied ? <Check size={10} /> : <Copy size={10} />}
+                  {copied ? 'Copiado' : 'Copiar'}
+                </button>
+              </div>
+              <pre className="text-xs text-ink-secondary bg-surface-elevated rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-y-auto">
+                {command.prompt || '(sin prompt)'}
+              </pre>
+            </div>
+
+            {/* Respuesta */}
+            {!isArchived && (
+              <div>
+                <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">
+                  Respuesta
+                </span>
+                <textarea
+                  value={respuesta}
+                  onChange={e => setRespuesta(e.target.value)}
+                  placeholder="Pega aquí la respuesta del agente... (Ctrl+V para pegar imágenes)"
+                  className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint resize-none focus:outline-none focus:border-accent/60 min-h-[80px]"
+                  rows={4}
+                />
+              </div>
+            )}
+            {isArchived && command.respuesta && (
+              <div>
+                <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">
+                  Respuesta
+                </span>
+                <pre className="text-xs text-ink-secondary bg-surface-elevated rounded-lg p-3 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
+                  {command.respuesta}
+                </pre>
+                {command.fechaCompletado && (
+                  <p className="text-[10px] text-ink-faint mt-1">
+                    Completado: {format(parseISO(command.fechaCompletado), 'd MMM yyyy', { locale: es })}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Adjuntos */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <input ref={imageInputRef} type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+                <input ref={fileInputRef} type="file" className="hidden" accept="*/*" onChange={handleFileUpload} />
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
+                >
+                  {uploading ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />}
+                  Imagen
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
+                >
+                  <FolderOpen size={11} />
+                  Archivo
+                </button>
+                {command.archivoUrl && (
+                  <a
+                    href={command.archivoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto inline-flex items-center gap-1 text-[10px] text-accent hover:underline"
+                  >
+                    <ExternalLink size={10} />
+                    {command.archivoTipo ?? 'Ver archivo'}
+                  </a>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={archivoUrl}
+                  onChange={e => setArchivoUrl(e.target.value)}
+                  placeholder="URL pública (opcional)"
+                  className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+                />
+                <select
+                  value={archivoTipo}
+                  onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
+                  className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
+                >
+                  <option value="">Tipo</option>
+                  {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Error */}
+            {saveError && (
+              <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1.5">
+                {saveError}
+              </p>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-3.5 border-t border-edge/40 flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-xl transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Guardar
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 text-danger/70 hover:text-danger hover:bg-danger/10 rounded-xl text-xs font-medium transition-colors"
+            >
+              <Trash2 size={13} />
+              Eliminar
+            </button>
+          </div>
+        </motion.div>
+      </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          message="¿Seguro que quieres eliminar esta delegación? Se archivará en Notion."
+          onConfirm={() => { onDelete(command.id); onClose(); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── Command Card (compact list item) ─────────────────────────────────────────
+
+function CommandCard({ command, onClick }: { command: NotionCommand; onClick: () => void }) {
+  const isArchived = ARCHIVED_ESTADOS.includes(command.estado);
+  const destColor = command.destinatario ? (DEST_COLORS[command.destinatario] ?? '#6b7280') : null;
+  const modeloCfg = command.modelo ? MODELO_CONFIG[command.modelo] : null;
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 6 }}
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.15 }}
+      onClick={onClick}
       className={clsx(
-        'rounded-xl border transition-all',
+        'group rounded-xl border cursor-pointer transition-all',
+        'bg-surface-card hover:bg-surface-elevated/40',
         isArchived
-          ? 'bg-surface-card/50 border-edge/30 opacity-70'
+          ? 'border-edge/30 opacity-60'
           : command.estado === 'Bloqueado'
-            ? 'bg-surface-card border-orange-500/30'
-            : command.estado === 'Respuesta Recibida'
-              ? 'bg-surface-card border-yellow-500/30'
-              : 'bg-surface-card border-edge/60 hover:border-edge-bright'
+          ? 'border-orange-500/30 hover:border-orange-500/50'
+          : command.estado === 'Respuesta Recibida'
+          ? 'border-yellow-500/30 hover:border-yellow-500/50'
+          : 'border-edge/60 hover:border-edge-bright',
       )}
     >
-      {/* Header */}
-      <div
-        className="flex items-start gap-3 p-3.5 cursor-pointer"
-        onClick={() => setExpanded(v => !v)}
-      >
-        <Terminal size={14} className="mt-0.5 shrink-0 text-accent" />
+      <div className="flex items-center gap-3 px-3.5 py-3">
+        <Terminal size={13} className="shrink-0 text-accent/70" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 flex-wrap">
-            <p className={clsx('text-sm font-medium', isArchived ? 'text-ink-muted line-through' : 'text-ink')}>
-              {command.titulo}
-            </p>
-            <EstadoBadge estado={command.estado} />
-          </div>
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <DestBadge dest={command.destinatario} />
-            {command.subchat && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-ink-muted">
-                <MessageSquare size={9} />
-                {command.subchat}
+          <p className={clsx(
+            'text-sm font-medium truncate',
+            isArchived ? 'text-ink-muted line-through' : 'text-ink',
+          )}>
+            {command.titulo}
+          </p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {command.destinatario && (
+              <span className="text-[10px] font-medium" style={{ color: destColor ?? undefined }}>
+                {command.destinatario}
               </span>
             )}
             {command.prioridad && (
@@ -329,9 +558,17 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
                 'text-[10px] font-medium px-1.5 py-0.5 rounded',
                 command.prioridad === 'Alta' ? 'text-red-400 bg-red-500/10' :
                 command.prioridad === 'Baja' ? 'text-green-400 bg-green-500/10' :
-                'text-ink-muted'
+                'text-yellow-400 bg-yellow-500/10',
               )}>
                 {command.prioridad}
+              </span>
+            )}
+            {modeloCfg && command.modelo && (
+              <span
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                style={{ color: modeloCfg.color, backgroundColor: modeloCfg.bg }}
+              >
+                {command.modelo}
               </span>
             )}
             {command.fechaCreacion && (
@@ -340,264 +577,35 @@ function CommandCard({ command, onUpdate, onDelete, onCopyPrompt }: CommandCardP
               </span>
             )}
             {command.archivoUrl && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-accent/70">
-                <Paperclip size={9} />
+              <span className="text-[10px] text-accent/60">
+                <Paperclip size={9} className="inline mr-0.5" />
                 {command.archivoTipo ?? 'archivo'}
               </span>
             )}
           </div>
         </div>
-        <ChevronDown
-          size={14}
-          className={clsx('text-ink-muted transition-transform shrink-0 mt-0.5', expanded && 'rotate-180')}
-        />
+        <div className="flex items-center gap-2 shrink-0">
+          <EstadoBadge estado={command.estado} />
+          <ChevronRight
+            size={13}
+            className="text-ink-faint opacity-0 group-hover:opacity-100 transition-opacity"
+          />
+        </div>
       </div>
-
-      {/* Expanded content */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <div className="px-3.5 pb-3.5 pt-0 flex flex-col gap-3 border-t border-edge/30">
-              {/* Prompt */}
-              <div className="mt-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">Prompt</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); copyPrompt(); }}
-                    className={clsx(
-                      'flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md transition-all',
-                      copied
-                        ? 'bg-success/20 text-success'
-                        : 'bg-surface-elevated text-ink-muted hover:text-ink-secondary'
-                    )}
-                  >
-                    {copied ? <Check size={10} /> : <Copy size={10} />}
-                    {copied ? 'Copiado' : 'Copiar'}
-                  </button>
-                </div>
-                <pre className="text-xs text-ink-secondary bg-surface-elevated rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-y-auto">
-                  {command.prompt || '(sin prompt)'}
-                </pre>
-              </div>
-
-              {/* Subchat field */}
-              <div>
-                <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">
-                  Subchat / Referencia
-                </span>
-                <div className="flex gap-2">
-                  <input
-                    value={subchat}
-                    onChange={e => setSubchat(e.target.value)}
-                    placeholder="Nombre del chat donde enviaste el prompt..."
-                    className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
-                  />
-                  {subchat !== (command.subchat || '') && (
-                    <button
-                      onClick={saveSubchat}
-                      disabled={saving}
-                      className="px-2.5 py-1.5 bg-accent/15 text-accent text-[10px] font-medium rounded-lg hover:bg-accent/25 transition-colors disabled:opacity-50"
-                    >
-                      Guardar
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Respuesta input/display */}
-              {showRespuestaInput && (
-                <div>
-                  <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">
-                    Respuesta del agente
-                  </span>
-                  <textarea
-                    value={respuesta}
-                    onChange={e => setRespuesta(e.target.value)}
-                    placeholder="Pega aquí la respuesta del agente..."
-                    className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint resize-none focus:outline-none focus:border-accent/60 min-h-[80px]"
-                    rows={4}
-                    onClick={e => e.stopPropagation()}
-                  />
-                  {respuesta !== command.respuesta && respuesta.trim() && (
-                    <button
-                      onClick={saveRespuesta}
-                      disabled={saving}
-                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/15 text-yellow-500 text-xs font-medium rounded-lg hover:bg-yellow-500/25 transition-colors disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 size={11} className="animate-spin" /> : <Inbox size={11} />}
-                      Guardar respuesta
-                    </button>
-                  )}
-                  {saveError && (
-                    <p className="mt-1.5 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1.5">
-                      {saveError}
-                    </p>
-                  )}
-                </div>
-              )}
-              {isArchived && command.respuesta && (
-                <div>
-                  <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider block mb-1.5">Respuesta</span>
-                  <pre className="text-xs text-ink-secondary bg-surface-elevated rounded-lg p-3 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
-                    {command.respuesta}
-                  </pre>
-                  {command.fechaCompletado && (
-                    <p className="text-[10px] text-ink-faint mt-1">
-                      Completado: {format(parseISO(command.fechaCompletado), 'd MMM yyyy', { locale: es })}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Archivo adjunto */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
-                    Archivo adjunto
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                    />
-                    <button
-                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                      disabled={uploading}
-                      className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-surface-elevated text-ink-muted hover:text-ink-secondary transition-all disabled:opacity-50"
-                    >
-                      {uploading ? <Loader2 size={10} className="animate-spin" /> : <Paperclip size={10} />}
-                      {uploading ? 'Subiendo...' : 'Subir archivo'}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={archivoUrl}
-                    onChange={e => setArchivoUrl(e.target.value)}
-                    placeholder="URL pública (Vercel Blob, Google Drive /file/d/ID/view...)"
-                    className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
-                    onClick={e => e.stopPropagation()}
-                  />
-                  <select
-                    value={archivoTipo}
-                    onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
-                    onClick={e => e.stopPropagation()}
-                    className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
-                  >
-                    <option value="">Tipo</option>
-                    {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                {(archivoUrl !== (command.archivoUrl || '') || archivoTipo !== (command.archivoTipo || '')) && (
-                  <button
-                    onClick={saveArchivo}
-                    disabled={saving}
-                    className="mt-1.5 flex items-center gap-1 px-2.5 py-1 bg-accent/15 text-accent text-[10px] font-medium rounded-lg hover:bg-accent/25 transition-colors disabled:opacity-50"
-                  >
-                    <Link size={10} />
-                    Guardar URL
-                  </button>
-                )}
-                {command.archivoUrl && (
-                  <a
-                    href={command.archivoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-accent hover:underline"
-                  >
-                    <ExternalLink size={10} />
-                    {command.archivoTipo ?? 'Abrir archivo'}
-                  </a>
-                )}
-              </div>
-
-              {/* Actions row */}
-              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-edge/20">
-                {/* Estado selector — always available, bidirectional */}
-                <EstadoSelector
-                  current={command.estado}
-                  onSelect={changeEstado}
-                  disabled={saving}
-                />
-
-                {/* Quick actions based on current estado */}
-                {command.estado === 'Pendiente' && (
-                  <button
-                    onClick={() => changeEstado('En Proceso')}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/15 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/25 transition-colors disabled:opacity-50"
-                  >
-                    <Send size={11} />
-                    Marcar enviado
-                  </button>
-                )}
-                {command.estado === 'Respuesta Recibida' && (
-                  <button
-                    onClick={() => changeEstado('Completado')}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/15 text-green-400 text-xs font-medium rounded-lg hover:bg-green-500/25 transition-colors disabled:opacity-50"
-                  >
-                    <Check size={11} />
-                    Aprobar y completar
-                  </button>
-                )}
-                {command.estado === 'Bloqueado' && (
-                  <button
-                    onClick={() => changeEstado('Pendiente')}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-500/15 text-gray-400 text-xs font-medium rounded-lg hover:bg-gray-500/25 transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw size={11} />
-                    Replantear
-                  </button>
-                )}
-
-                {/* Cancel and Delete buttons */}
-                <button
-                  onClick={() => changeEstado('Cancelado')}
-                  className="ml-auto flex items-center gap-1 px-2 py-1.5 text-[10px] text-ink-faint hover:text-yellow-400 transition-colors"
-                >
-                  <X size={10} />
-                  Cancelar
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDelete(command.id); }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-danger/60 hover:text-danger hover:bg-danger/10 text-xs rounded-lg transition-colors"
-                  title="Eliminar delegación"
-                >
-                  <Trash2 size={11} />
-                  <span className="hidden sm:inline">Eliminar</span>
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
 
-// ─── Create Delegación Modal ────────────────────────────────────────────────────
+// ─── Create Command Modal ─────────────────────────────────────────────────────
 
-interface CreateCommandModalProps {
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
+function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [titulo, setTitulo] = useState('');
   const [destinatario, setDestinatario] = useState<CommandDestinatario | ''>('');
   const [subchat, setSubchat] = useState('');
   const [prompt, setPrompt] = useState('');
   const [prioridad, setPrioridad] = useState<CommandPrioridad | ''>('Media');
+  const [modelo, setModelo] = useState<CommandModelo>('Sonnet');
+  const [esfuerzo, setEsfuerzo] = useState<CommandEsfuerzo | ''>('');
   const [archivoUrl, setArchivoUrl] = useState('');
   const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>('');
   const [uploading, setUploading] = useState(false);
@@ -628,7 +636,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!titulo.trim()) { setError('El titulo es obligatorio'); return; }
+    if (!titulo.trim()) { setError('El título es obligatorio'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -638,6 +646,8 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
         destinatario: destinatario || null,
         subchat: subchat.trim() || undefined,
         prioridad: (prioridad || null) as CommandPrioridad | null,
+        modelo,
+        esfuerzo: (esfuerzo || null) as CommandEsfuerzo | null,
         archivoUrl: archivoUrl.trim() || null,
         archivoTipo: (archivoTipo || null) as CommandArchivoTipo | null,
       };
@@ -658,6 +668,8 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
     }
   }
 
+  const modeloCfg = MODELO_CONFIG[modelo];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <motion.div
@@ -670,7 +682,9 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
             <Terminal size={15} className="text-accent" />
             <h2 className="text-sm font-semibold text-ink">Nueva Delegación</h2>
           </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink p-1">&#x2715;</button>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink p-1 rounded-lg">
+            <X size={14} />
+          </button>
         </div>
         <form onSubmit={submit} className="p-5 flex flex-col gap-4">
           {error && (
@@ -678,23 +692,26 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               {error}
             </div>
           )}
+
           <div>
-            <label className="text-xs font-medium text-ink-secondary block mb-1.5">Titulo *</label>
+            <label className="text-xs font-medium text-ink-secondary block mb-1.5">Título *</label>
             <input
               value={titulo}
               onChange={e => setTitulo(e.target.value)}
-              placeholder="ej: Fix Resumen_Fiscal, Logo AeroReclaim..."
+              placeholder="ej: AER-82: Fix resumen fiscal, Blog artículo vuelos..."
               className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
               autoFocus
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          {/* Destinatario + Prioridad + Modelo */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-medium text-ink-secondary block mb-1.5">Destinatario</label>
               <select
                 value={destinatario}
                 onChange={e => setDestinatario(e.target.value as CommandDestinatario | '')}
-                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent/60"
+                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs text-ink focus:outline-none focus:border-accent/60"
               >
                 <option value="">Sin asignar</option>
                 {COMMAND_DESTINATARIOS.map(d => <option key={d} value={d}>{d}</option>)}
@@ -705,51 +722,77 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               <select
                 value={prioridad}
                 onChange={e => setPrioridad(e.target.value as CommandPrioridad | '')}
-                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent/60"
+                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs text-ink focus:outline-none focus:border-accent/60"
               >
-                <option value="">Sin prioridad</option>
+                <option value="">—</option>
                 <option value="Alta">Alta</option>
                 <option value="Media">Media</option>
                 <option value="Baja">Baja</option>
               </select>
             </div>
+            <div>
+              <label className="text-xs font-medium text-ink-secondary block mb-1.5">
+                <span style={{ color: modeloCfg.color }}>●</span> Modelo
+              </label>
+              <select
+                value={modelo}
+                onChange={e => setModelo(e.target.value as CommandModelo)}
+                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs font-medium focus:outline-none focus:border-accent/60"
+                style={{ color: modeloCfg.color }}
+              >
+                {COMMAND_MODELOS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
           </div>
-          {/* Sub-chat field */}
-          <div>
-            <label className="text-xs font-medium text-ink-secondary block mb-1.5">
-              Sub-chat / Nota
-              <span className="text-ink-faint font-normal ml-1">(opcional)</span>
-            </label>
-            <input
-              value={subchat}
-              onChange={e => setSubchat(e.target.value)}
-              placeholder='ej: "CEO — AeroReclaim", "Tech & Pipeline"'
-              className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
-            />
+
+          {/* Esfuerzo + Subchat */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-ink-secondary block mb-1.5">Esfuerzo</label>
+              <select
+                value={esfuerzo}
+                onChange={e => setEsfuerzo(e.target.value as CommandEsfuerzo | '')}
+                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs text-ink focus:outline-none focus:border-accent/60"
+              >
+                <option value="">Sin definir</option>
+                {COMMAND_ESFUERZOS.map(e => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-ink-secondary block mb-1.5">
+                Subchat <span className="text-ink-faint font-normal">(opcional)</span>
+              </label>
+              <input
+                value={subchat}
+                onChange={e => setSubchat(e.target.value)}
+                placeholder="ej: CEO — AeroReclaim"
+                className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+              />
+            </div>
           </div>
+
           {/* Archivo adjunto */}
           <div>
             <label className="text-xs font-medium text-ink-secondary block mb-1.5">
-              Archivo adjunto
-              <span className="text-ink-faint font-normal ml-1">(opcional)</span>
+              Archivo adjunto <span className="text-ink-faint font-normal">(opcional)</span>
             </label>
             <div className="flex gap-2">
               <input
                 value={archivoUrl}
                 onChange={e => setArchivoUrl(e.target.value)}
-                placeholder="URL pública o pega link de Google Drive..."
-                className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+                placeholder="URL pública o link Google Drive..."
+                className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
               />
               <select
                 value={archivoTipo}
                 onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
-                className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-sm text-ink focus:outline-none focus:border-accent/60"
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs text-ink focus:outline-none focus:border-accent/60"
               >
                 <option value="">Tipo</option>
                 {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="flex items-center gap-2 mt-1.5">
+            <div className="mt-1.5 flex items-center gap-2">
               <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
               <button
                 type="button"
@@ -767,6 +810,8 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               )}
             </div>
           </div>
+
+          {/* Prompt */}
           <div>
             <label className="text-xs font-medium text-ink-secondary block mb-1.5">Prompt</label>
             <textarea
@@ -777,6 +822,7 @@ function CreateCommandModal({ onClose, onCreated }: CreateCommandModalProps) {
               className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-faint resize-none focus:outline-none focus:border-accent/60 font-mono"
             />
           </div>
+
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-ink-muted hover:text-ink rounded-lg">
               Cancelar
@@ -806,13 +852,17 @@ function SetupBanner() {
         <h3 className="text-sm font-semibold text-ink">Setup requerido: Base de datos de Delegaciones</h3>
       </div>
       <p className="text-xs text-ink-muted leading-relaxed">
-        La variable <code className="bg-surface-elevated px-1 py-0.5 rounded text-accent font-mono">COMMANDS_DATABASE_ID</code> no está configurada en Vercel.
+        La variable{' '}
+        <code className="bg-surface-elevated px-1 py-0.5 rounded text-accent font-mono">
+          COMMANDS_DATABASE_ID
+        </code>{' '}
+        no está configurada en Vercel.
       </p>
     </div>
   );
 }
 
-// ─── Main Delegaciones Center ───────────────────────────────────────────────────
+// ─── Main CommandCenter ─────────────────────────────────────────────────────────
 
 export function CommandCenter() {
   const [commands, setCommands] = useState<NotionCommand[]>([]);
@@ -821,9 +871,9 @@ export function CommandCenter() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState<NotionCommand | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const fetchCommands = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -849,6 +899,7 @@ export function CommandCenter() {
 
   const updateCommand = useCallback(async (id: string, updates: Partial<NotionCommand>) => {
     setCommands(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    setSelectedCommand(prev => prev?.id === id ? { ...prev, ...updates } : prev);
     const res = await fetch(`/api/notion/commands/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -862,11 +913,9 @@ export function CommandCenter() {
 
   const deleteCommand = useCallback(async (id: string) => {
     setCommands(prev => prev.filter(c => c.id !== id));
-    setDeleteConfirmId(null);
+    setSelectedCommand(null);
     const res = await fetch(`/api/notion/commands/${id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      fetchCommands(true);
-    }
+    if (!res.ok) fetchCommands(true);
   }, [fetchCommands]);
 
   function handleCopyPrompt(text: string) {
@@ -877,12 +926,10 @@ export function CommandCenter() {
 
   const activeCommands = commands.filter(c => ACTIVE_ESTADOS.includes(c.estado));
   const historyCommands = commands.filter(c => ARCHIVED_ESTADOS.includes(c.estado));
-
   const sortedActive = [...activeCommands].sort((a, b) =>
-    COMMAND_ESTADO_ORDER[a.estado] - COMMAND_ESTADO_ORDER[b.estado]
+    COMMAND_ESTADO_ORDER[a.estado] - COMMAND_ESTADO_ORDER[b.estado],
   );
 
-  // Count by estado
   const counts = activeCommands.reduce((acc, c) => {
     acc[c.estado] = (acc[c.estado] || 0) + 1;
     return acc;
@@ -943,7 +990,9 @@ export function CommandCenter() {
           <div>
             <p className="font-medium">Error cargando delegaciones</p>
             <p className="mt-0.5 text-red-400/70">{error}</p>
-            <button onClick={() => fetchCommands()} className="mt-1.5 underline underline-offset-2">Reintentar</button>
+            <button onClick={() => fetchCommands()} className="mt-1.5 underline underline-offset-2">
+              Reintentar
+            </button>
           </div>
         </div>
       )}
@@ -952,7 +1001,7 @@ export function CommandCenter() {
 
       {!needsSetup && (
         <>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
             {sortedActive.length === 0 ? (
               <div className="text-center py-12 text-ink-muted">
                 <Terminal size={24} className="mx-auto mb-3 opacity-30" />
@@ -964,9 +1013,7 @@ export function CommandCenter() {
                 <CommandCard
                   key={cmd.id}
                   command={cmd}
-                  onUpdate={updateCommand}
-                  onDelete={setDeleteConfirmId}
-                  onCopyPrompt={handleCopyPrompt}
+                  onClick={() => setSelectedCommand(cmd)}
                 />
               ))
             )}
@@ -994,9 +1041,7 @@ export function CommandCenter() {
                       <CommandCard
                         key={cmd.id}
                         command={cmd}
-                        onUpdate={updateCommand}
-                        onDelete={setDeleteConfirmId}
-                        onCopyPrompt={handleCopyPrompt}
+                        onClick={() => setSelectedCommand(cmd)}
                       />
                     ))}
                   </motion.div>
@@ -1007,6 +1052,7 @@ export function CommandCenter() {
         </>
       )}
 
+      {/* Create modal */}
       {isCreateOpen && (
         <CreateCommandModal
           onClose={() => setIsCreateOpen(false)}
@@ -1014,14 +1060,18 @@ export function CommandCenter() {
         />
       )}
 
-      {/* Delete confirmation */}
-      {deleteConfirmId && (
-        <ConfirmDialog
-          message="¿Seguro que quieres eliminar esta delegación? Se archivara en Notion."
-          onConfirm={() => deleteCommand(deleteConfirmId)}
-          onCancel={() => setDeleteConfirmId(null)}
-        />
-      )}
+      {/* Detail modal */}
+      <AnimatePresence>
+        {selectedCommand && (
+          <CommandDetailModal
+            command={selectedCommand}
+            onClose={() => setSelectedCommand(null)}
+            onUpdate={updateCommand}
+            onDelete={deleteCommand}
+            onCopyPrompt={handleCopyPrompt}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Copy toast */}
       <AnimatePresence>
@@ -1030,7 +1080,7 @@ export function CommandCenter() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-success/20 border border-success/30 text-success text-xs font-medium rounded-full backdrop-blur-sm shadow-lg"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-success/20 border border-success/30 text-success text-xs font-medium rounded-full backdrop-blur-sm shadow-lg z-50"
           >
             <Check size={12} />
             Prompt copiado al portapapeles

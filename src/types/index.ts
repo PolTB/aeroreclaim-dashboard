@@ -134,6 +134,8 @@ export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat
 export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Respuesta Recibida' | 'Completado' | 'Bloqueado' | 'Cancelado';
 export type CommandPrioridad = 'Alta' | 'Media' | 'Baja';
 export type CommandArchivoTipo = 'imagen' | 'PDF' | 'markdown' | 'HTML' | 'Google Doc' | 'otro';
+export type CommandModelo = 'Sonnet' | 'Opus' | 'Haiku';
+export type CommandEsfuerzo = 'Baja' | 'Media' | 'Alta';
 
 export const COMMAND_ARCHIVO_TIPOS: CommandArchivoTipo[] = ['imagen', 'PDF', 'markdown', 'HTML', 'Google Doc', 'otro'];
 
@@ -146,6 +148,8 @@ export interface NotionCommand {
   estado: CommandEstado;
   respuesta: string;
   prioridad: CommandPrioridad | null;
+  modelo: CommandModelo | null;
+  esfuerzo: CommandEsfuerzo | null;
   fechaCreacion: string | null;
   fechaCompletado: string | null;
   url: string;
@@ -159,17 +163,22 @@ export interface CreateCommandPayload {
   subchat?: string;
   prompt: string;
   prioridad?: CommandPrioridad | null;
+  modelo?: CommandModelo | null;
+  esfuerzo?: CommandEsfuerzo | null;
   archivoUrl?: string | null;
   archivoTipo?: CommandArchivoTipo | null;
 }
 
 export interface UpdateCommandPayload {
+  titulo?: string;
   estado?: CommandEstado;
   respuesta?: string;
   subchat?: string;
   fechaCompletado?: string | null;
   destinatario?: CommandDestinatario | null;
   prioridad?: CommandPrioridad | null;
+  modelo?: CommandModelo | null;
+  esfuerzo?: CommandEsfuerzo | null;
   archivoUrl?: string | null;
   archivoTipo?: CommandArchivoTipo | null;
 }
