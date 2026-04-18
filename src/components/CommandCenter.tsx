@@ -219,7 +219,7 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
           </div>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4">
 
             {/* Editable title */}
             <input
