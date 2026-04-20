@@ -6,7 +6,7 @@ import {
   Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown, ChevronRight,
   RefreshCw, Loader2, Check, History, AlertTriangle,
   Inbox, Ban, X, Trash2, Paperclip, ExternalLink, Image as ImageIcon,
-  FolderOpen, Cpu, Send,
+  FolderOpen, Send,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
@@ -114,7 +114,6 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
   const [subchat, setSubchat] = useState(command.subchat || '');
   const [archivoUrl, setArchivoUrl] = useState(command.archivoUrl || '');
   const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>(command.archivoTipo || '');
-  const [detallesOpen, setDetallesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -229,7 +228,7 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
               placeholder="Título de la delegación..."
             />
 
-            {/* 3 inline pill selects */}
+            {/* Pills: Destinatario · Estado · Prioridad · Modelo · Esfuerzo */}
             <div className="flex flex-wrap gap-2">
               <select
                 value={destinatario ?? ''}
@@ -267,106 +266,35 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
                 <option value="Media">Media</option>
                 <option value="Baja">Baja</option>
               </select>
+              <select
+                value={modelo}
+                onChange={e => setModelo(e.target.value as CommandModelo)}
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60 cursor-pointer transition-all"
+                style={{ color: modeloCfg.color, borderColor: modeloCfg.color + '50' }}
+              >
+                {COMMAND_MODELOS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select
+                value={esfuerzo ?? ''}
+                onChange={e => setEsfuerzo((e.target.value as CommandEsfuerzo) || null)}
+                className="bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60 cursor-pointer transition-all"
+                style={esfuerzo ? {
+                  color: esfuerzo === 'Alta' ? '#ef4444' : esfuerzo === 'Media' ? '#f59e0b' : '#22c55e',
+                  borderColor: (esfuerzo === 'Alta' ? '#ef4444' : esfuerzo === 'Media' ? '#f59e0b' : '#22c55e') + '50',
+                } : { color: 'var(--color-ink-secondary)' }}
+              >
+                <option value="">Esfuerzo</option>
+                {COMMAND_ESFUERZOS.map(e => <option key={e} value={e}>{e}</option>)}
+              </select>
             </div>
 
-            {/* Collapsible Detalles del agente */}
-            <div className="border border-edge/40 rounded-xl overflow-hidden">
-              <button
-                onClick={() => setDetallesOpen(v => !v)}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 bg-surface-elevated/40 hover:bg-surface-elevated transition-colors text-left"
-              >
-                <span className="text-[11px] font-semibold text-ink-muted uppercase tracking-wider flex items-center gap-1.5">
-                  <Cpu size={11} className="text-accent/70" />
-                  Detalles del agente
-                </span>
-                <ChevronDown
-                  size={12}
-                  className={clsx('text-ink-muted transition-transform', detallesOpen && 'rotate-180')}
-                />
-              </button>
-              <AnimatePresence>
-                {detallesOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.12 }}
-                  >
-                    <div className="px-3.5 py-3 grid grid-cols-2 gap-3 border-t border-edge/30">
-                      <div>
-                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Destinatario</label>
-                        <select
-                          value={destinatario ?? ''}
-                          onChange={e => setDestinatario((e.target.value as CommandDestinatario) || null)}
-                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
-                        >
-                          <option value="">Sin asignar</option>
-                          {COMMAND_DESTINATARIOS.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Estado</label>
-                        <select
-                          value={estado}
-                          onChange={e => setEstado(e.target.value as CommandEstado)}
-                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
-                        >
-                          {Object.keys(COMMAND_ESTADO_CONFIG).map(e => (
-                            <option key={e} value={e}>{COMMAND_ESTADO_CONFIG[e as CommandEstado].label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Prioridad</label>
-                        <select
-                          value={prioridad ?? ''}
-                          onChange={e => setPrioridad((e.target.value as CommandPrioridad) || null)}
-                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
-                        >
-                          <option value="">Sin prioridad</option>
-                          <option value="Alta">Alta</option>
-                          <option value="Media">Media</option>
-                          <option value="Baja">Baja</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-ink-faint font-medium block mb-1">
-                          Modelo IA
-                        </label>
-                        <select
-                          value={modelo}
-                          onChange={e => setModelo(e.target.value as CommandModelo)}
-                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-accent/60"
-                          style={{ color: modeloCfg.color }}
-                        >
-                          {COMMAND_MODELOS.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Esfuerzo</label>
-                        <select
-                          value={esfuerzo ?? ''}
-                          onChange={e => setEsfuerzo((e.target.value as CommandEsfuerzo) || null)}
-                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
-                        >
-                          <option value="">Sin definir</option>
-                          {COMMAND_ESFUERZOS.map(e => <option key={e} value={e}>{e}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-ink-faint font-medium block mb-1">Subchat</label>
-                        <input
-                          value={subchat}
-                          onChange={e => setSubchat(e.target.value)}
-                          placeholder="Nombre del chat..."
-                          className="w-full bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {/* Subchat */}
+            <input
+              value={subchat}
+              onChange={e => setSubchat(e.target.value)}
+              placeholder="Subchat (opcional)..."
+              className="w-full bg-surface-elevated border border-edge/40 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60 transition-colors"
+            />
 
             {/* Prompt */}
             <div>
@@ -568,6 +496,17 @@ function CommandCard({ command, onClick }: { command: NotionCommand; onClick: ()
                 style={{ color: modeloCfg.color, backgroundColor: modeloCfg.bg }}
               >
                 {command.modelo}
+              </span>
+            )}
+            {command.esfuerzo && (
+              <span
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                style={{
+                  color: command.esfuerzo === 'Alta' ? '#ef4444' : command.esfuerzo === 'Media' ? '#f59e0b' : '#22c55e',
+                  backgroundColor: command.esfuerzo === 'Alta' ? 'rgba(239,68,68,0.12)' : command.esfuerzo === 'Media' ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)',
+                }}
+              >
+                {command.esfuerzo}
               </span>
             )}
             {command.fechaCreacion && (
