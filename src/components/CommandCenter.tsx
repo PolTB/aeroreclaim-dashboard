@@ -38,6 +38,7 @@ const DEST_COLORS: Record<string, string> = {
   'Comet':         '#ec4899',
   'ChatGPT':       '#10b981',
   'Manual':        '#6b7280',
+  'Paperclip':     '#f59e0b',
 };
 
 const ESTADO_ICONS: Record<CommandEstado, React.ReactNode> = {

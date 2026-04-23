@@ -130,7 +130,7 @@ export function getCategoryColor(cat: string | null): string {
 
 // ─── Command types ─────────────────────────────────────────────────────────────
 
-export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual';
+export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual' | 'Paperclip';
 export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Respuesta Recibida' | 'Completado' | 'Bloqueado' | 'Cancelado';
 export type CommandPrioridad = 'Alta' | 'Media' | 'Baja';
 export type CommandArchivoTipo = 'imagen' | 'PDF' | 'markdown' | 'HTML' | 'Google Doc' | 'otro';
@@ -184,7 +184,7 @@ export interface UpdateCommandPayload {
 }
 
 export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [
-  'Claude CoWork', 'Claude Code', 'Claude Chat', 'Comet', 'ChatGPT', 'Manual'
+  'Claude CoWork', 'Claude Code', 'Claude Chat', 'Comet', 'ChatGPT', 'Manual', 'Paperclip'
 ];
 
 export const COMMAND_ESTADO_CONFIG: Record<CommandEstado, { label: string; color: string; bg: string; description: string }> = {
