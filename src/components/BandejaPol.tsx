@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Inbox, CheckCircle2, AlertTriangle, XCircle, Archive, RefreshCw, Check } from 'lucide-react';
+import { Inbox, CheckCircle2, AlertTriangle, XCircle, Archive, RefreshCw, Check, Info } from 'lucide-react';
 import clsx from 'clsx';
 
 const BANDEJA_PAGE_ID = '3438a573-e757-819c-8985-f031ec4b9a82';
 
 interface BandejaItem {
-  type: 'ok' | 'warning' | 'urgent';
+  type: 'ok' | 'warning' | 'urgent' | 'info';
   ref: string;
   contact: string;
   message: string;
@@ -40,16 +40,27 @@ function parseEntries(blocks: { type: string; paragraph?: { rich_text: { plain_t
       continue;
     }
 
-    // Accept any ref (AER-XX, AR-XXXX, PAT-GITHUB, etc.) and both — and –
+    // Structured format: EMOJI REF — CONTACT — MESSAGE
     const okMatch = text.match(/^✅\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
     const warnMatch = text.match(/^⚠️\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
     const urgentMatch = text.match(/^🔴\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
 
-    const match = okMatch || warnMatch || urgentMatch;
-    const type = okMatch ? 'ok' : warnMatch ? 'warning' : urgentMatch ? 'urgent' : null;
-
-    if (match && type && current) {
-      current.items.push({ type, ref: match[1], contact: match[2].trim(), message: match[3].trim() });
+    if (okMatch && current) {
+      current.items.push({ type: 'ok', ref: okMatch[1], contact: okMatch[2].trim(), message: okMatch[3].trim() });
+    } else if (warnMatch && current) {
+      current.items.push({ type: 'warning', ref: warnMatch[1], contact: warnMatch[2].trim(), message: warnMatch[3].trim() });
+    } else if (urgentMatch && current) {
+      current.items.push({ type: 'urgent', ref: urgentMatch[1], contact: urgentMatch[2].trim(), message: urgentMatch[3].trim() });
+    } else if (current) {
+      // Fallback: free-form text with any supported emoji (no strict REF—CONTACT—MESSAGE)
+      const freeOk = text.match(/^✅\s+(.+)$/);
+      const freeWarn = text.match(/^⚠️\s+(.+)$/);
+      const freeUrgent = text.match(/^🔴\s+(.+)$/);
+      const freeInfo = text.match(/^ℹ️\s+(.+)$/);
+      if (freeOk) current.items.push({ type: 'ok', ref: '', contact: '', message: freeOk[1].trim() });
+      else if (freeWarn) current.items.push({ type: 'warning', ref: '', contact: '', message: freeWarn[1].trim() });
+      else if (freeUrgent) current.items.push({ type: 'urgent', ref: '', contact: '', message: freeUrgent[1].trim() });
+      else if (freeInfo) current.items.push({ type: 'info', ref: '', contact: '', message: freeInfo[1].trim() });
     }
   }
 
@@ -140,6 +151,7 @@ export function BandejaPol() {
         <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-400" /> OK para enviar</span>
         <span className="flex items-center gap-1"><AlertTriangle size={11} className="text-amber-400" /> Corregido, revisa</span>
         <span className="flex items-center gap-1"><XCircle size={11} className="text-red-400" /> URGENTE</span>
+        <span className="flex items-center gap-1"><Info size={11} className="text-sky-400" /> Info</span>
       </div>
 
       {/* Loading */}
@@ -182,18 +194,20 @@ export function BandejaPol() {
                 !done && item.type === 'ok' && 'bg-emerald-500/6 border border-emerald-500/15',
                 !done && item.type === 'warning' && 'bg-amber-500/6 border border-amber-500/15',
                 !done && item.type === 'urgent' && 'bg-red-500/6 border border-red-500/15',
+                !done && item.type === 'info' && 'bg-sky-500/6 border border-sky-500/15',
                 done && 'bg-surface-elevated border border-edge/30',
               )}>
                 {!done && item.type === 'ok' && <CheckCircle2 size={13} className="text-emerald-400 mt-0.5 shrink-0" />}
                 {!done && item.type === 'warning' && <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />}
                 {!done && item.type === 'urgent' && <XCircle size={13} className="text-red-400 mt-0.5 shrink-0" />}
+                {!done && item.type === 'info' && <Info size={13} className="text-sky-400 mt-0.5 shrink-0" />}
                 {done && <Check size={13} className="text-ink-faint mt-0.5 shrink-0" />}
                 <div className="flex-1 min-w-0">
-                  <span className={clsx('text-xs font-mono font-semibold mr-2', done ? 'text-ink-faint line-through' : 'text-ink')}>{item.ref}</span>
-                  <span className="text-xs text-ink-muted mr-2">— {item.contact} —</span>
+                  {item.ref && <span className={clsx('text-xs font-mono font-semibold mr-2', done ? 'text-ink-faint line-through' : 'text-ink')}>{item.ref}</span>}
+                  {item.contact && <span className="text-xs text-ink-muted mr-2">— {item.contact} —</span>}
                   <span className={clsx(
                     'text-xs font-medium',
-                    done ? 'text-ink-faint line-through' : item.type === 'ok' ? 'text-emerald-400' : item.type === 'warning' ? 'text-amber-400' : 'text-red-400',
+                    done ? 'text-ink-faint line-through' : item.type === 'ok' ? 'text-emerald-400' : item.type === 'warning' ? 'text-amber-400' : item.type === 'urgent' ? 'text-red-400' : 'text-sky-400',
                   )}>{item.message}</span>
                   {done && <span className="ml-2 text-[10px] text-ink-faint">· Pol actuó</span>}
                 </div>
