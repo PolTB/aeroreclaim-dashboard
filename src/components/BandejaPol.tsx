@@ -40,6 +40,9 @@ function parseEntries(blocks: { type: string; paragraph?: { rich_text: { plain_t
       continue;
     }
 
+    // Skip audit log lines written back by the dashboard ("✅ Pol actuó —")
+    if (/^✅\s+Pol actuó/.test(text)) continue;
+
     // Structured format: EMOJI REF — CONTACT — MESSAGE
     const okMatch = text.match(/^✅\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
     const warnMatch = text.match(/^⚠️\s+(\S+)\s+[–—]\s+(.+?)\s+[–—]\s+(.+)$/);
@@ -99,7 +102,7 @@ export function BandejaPol() {
   useEffect(() => { load(); }, []);
 
   async function markDone(entryDate: string, item: BandejaItem) {
-    const key = `${entryDate}__${item.ref}`;
+    const key = `${entryDate}__${item.ref || item.message.slice(0, 40)}`;
     setMarking(key);
     const now = new Date();
     const ts = now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -169,7 +172,7 @@ export function BandejaPol() {
       )}
 
       {/* Empty state */}
-      {!loading && !error && active.length === 0 && (
+      {!loading && !error && active.filter((e) => e.items.some((item) => !doneItems.has(`${e.date}__${item.ref || item.message.slice(0, 40)}`))).length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-10 h-10 rounded-xl bg-surface-card border border-edge/60 flex items-center justify-center mb-3">
             <Inbox size={18} className="text-ink-faint" />
@@ -180,38 +183,35 @@ export function BandejaPol() {
       )}
 
       {/* Active entries */}
-      {active.map((entry) => (
-        <div key={entry.id} className="bg-surface-card border border-edge/60 rounded-xl p-4 space-y-2.5">
-          <p className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider">📅 {entry.date}</p>
-          {entry.items.map((item, i) => {
-            const key = `${entry.date}__${item.ref}`;
-            const done = doneItems.has(key);
-            const isMarking = marking === key;
-            return (
-              <div key={i} className={clsx(
-                'flex items-start gap-2.5 rounded-lg px-3 py-2.5 transition-opacity',
-                done && 'opacity-40',
-                !done && item.type === 'ok' && 'bg-emerald-500/6 border border-emerald-500/15',
-                !done && item.type === 'warning' && 'bg-amber-500/6 border border-amber-500/15',
-                !done && item.type === 'urgent' && 'bg-red-500/6 border border-red-500/15',
-                !done && item.type === 'info' && 'bg-sky-500/6 border border-sky-500/15',
-                done && 'bg-surface-elevated border border-edge/30',
-              )}>
-                {!done && item.type === 'ok' && <CheckCircle2 size={13} className="text-emerald-400 mt-0.5 shrink-0" />}
-                {!done && item.type === 'warning' && <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />}
-                {!done && item.type === 'urgent' && <XCircle size={13} className="text-red-400 mt-0.5 shrink-0" />}
-                {!done && item.type === 'info' && <Info size={13} className="text-sky-400 mt-0.5 shrink-0" />}
-                {done && <Check size={13} className="text-ink-faint mt-0.5 shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  {item.ref && <span className={clsx('text-xs font-mono font-semibold mr-2', done ? 'text-ink-faint line-through' : 'text-ink')}>{item.ref}</span>}
-                  {item.contact && <span className="text-xs text-ink-muted mr-2">— {item.contact} —</span>}
-                  <span className={clsx(
-                    'text-xs font-medium',
-                    done ? 'text-ink-faint line-through' : item.type === 'ok' ? 'text-emerald-400' : item.type === 'warning' ? 'text-amber-400' : item.type === 'urgent' ? 'text-red-400' : 'text-sky-400',
-                  )}>{item.message}</span>
-                  {done && <span className="ml-2 text-[10px] text-ink-faint">· Pol actuó</span>}
-                </div>
-                {!done && (
+      {active.map((entry) => {
+        const pendingItems = entry.items.filter((item) => !doneItems.has(`${entry.date}__${item.ref || item.message.slice(0, 40)}`));
+        if (pendingItems.length === 0) return null;
+        return (
+          <div key={entry.id} className="bg-surface-card border border-edge/60 rounded-xl p-4 space-y-2.5">
+            <p className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider">📅 {entry.date}</p>
+            {pendingItems.map((item, i) => {
+              const key = `${entry.date}__${item.ref || item.message.slice(0, 40)}`;
+              const isMarking = marking === key;
+              return (
+                <div key={i} className={clsx(
+                  'flex items-start gap-2.5 rounded-lg px-3 py-2.5',
+                  item.type === 'ok' && 'bg-emerald-500/6 border border-emerald-500/15',
+                  item.type === 'warning' && 'bg-amber-500/6 border border-amber-500/15',
+                  item.type === 'urgent' && 'bg-red-500/6 border border-red-500/15',
+                  item.type === 'info' && 'bg-sky-500/6 border border-sky-500/15',
+                )}>
+                  {item.type === 'ok' && <CheckCircle2 size={13} className="text-emerald-400 mt-0.5 shrink-0" />}
+                  {item.type === 'warning' && <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />}
+                  {item.type === 'urgent' && <XCircle size={13} className="text-red-400 mt-0.5 shrink-0" />}
+                  {item.type === 'info' && <Info size={13} className="text-sky-400 mt-0.5 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    {item.ref && <span className="text-xs font-mono font-semibold mr-2 text-ink">{item.ref}</span>}
+                    {item.contact && <span className="text-xs text-ink-muted mr-2">— {item.contact} —</span>}
+                    <span className={clsx(
+                      'text-xs font-medium',
+                      item.type === 'ok' ? 'text-emerald-400' : item.type === 'warning' ? 'text-amber-400' : item.type === 'urgent' ? 'text-red-400' : 'text-sky-400',
+                    )}>{item.message}</span>
+                  </div>
                   <button
                     onClick={() => markDone(entry.date, item)}
                     disabled={isMarking}
@@ -221,12 +221,12 @@ export function BandejaPol() {
                     {isMarking ? <RefreshCw size={9} className="animate-spin" /> : <Check size={9} />}
                     Hecho
                   </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
 
       {/* Archive */}
       {archived.length > 0 && (
