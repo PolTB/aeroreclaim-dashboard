@@ -2,15 +2,29 @@ import { NextResponse } from 'next/server';
 import { getCommands, createCommand } from '@/lib/notionCommands';
 import type { CreateCommandPayload } from '@/types';
 
+// Cache en Vercel edge — comandos cambian con menos frecuencia que tasks
+export const revalidate = 30;
+
 export async function GET() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
   try {
     const commands = await getCommands();
-    return NextResponse.json({ commands });
+    clearTimeout(timeoutId);
+
+    return NextResponse.json({ commands }, {
+      headers: {
+        'Cache-Control': 's-maxage=60, stale-while-revalidate=120',
+      },
+    });
   } catch (err) {
-    console.error('[GET /api/notion/commands]', err);
-    const msg = err instanceof Error ? err.message : 'Failed to fetch commands';
+    clearTimeout(timeoutId);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    console.error('[GET /api/notion/commands]', isTimeout ? 'TIMEOUT (8s)' : err);
+    const msg = isTimeout ? 'Notion API timeout' : (err instanceof Error ? err.message : 'Failed to fetch commands');
     const isSetup = msg.includes('COMMANDS_DATABASE_ID');
-    return NextResponse.json({ error: msg, needsSetup: isSetup }, { status: 500 });
+    return NextResponse.json({ error: msg, needsSetup: isSetup }, { status: isTimeout ? 504 : 500 });
   }
 }
 

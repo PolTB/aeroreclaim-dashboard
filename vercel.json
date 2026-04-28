@@ -1,0 +1,19 @@
+{
+  "crons": [
+    {
+      "path": "/api/health",
+      "schedule": "*/10 * * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/notion/tasks/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/notion/commands/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/notion/blocks/route.ts": {
+      "maxDuration": 10
+    }
+  }
+}
