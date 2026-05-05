@@ -1,7 +1,7 @@
 /**
  * ═══════════════════════════════════════════════════════════════
  * AERORECLAIM — AGENTE 2: LEGAL SCORING ENGINE
- * Versión 1.1 | Abril 2026
+ * Versión 1.2 | Mayo 2026 — AER-114: VCP fix + fixJoseStatus + testScoringNoEU
  * 
  * Evalúa automáticamente cada lead del Pre-Validador y decide:
  *   Score ≥ 70  → ACCEPTED  → Onboarding_Queue
@@ -10,7 +10,7 @@
  * ═══════════════════════════════════════════════════════════════
  */
 
-// ─── CONFIGURACIÓN ─────────────────────────────────────────────
+// ─── CONFIGURACIÓN ────────────────────────────────────────────
 const LEGAL_CONFIG = {
   SHEET_LEADS:      "Leads",
   SHEET_SCORED:     "Scored_Leads",
@@ -38,7 +38,7 @@ const LEGAL_CONFIG = {
   }
 };
 
-// ─── AEROLÍNEAS: IATA CODE → PERFIL ─────────────────────────────
+// ─── AEROLÍNEAS: IATA CODE → PERFIL ───────────────────────────
 const AIRLINE_CODES = {
   "Iberia": "IB", "Vueling": "VY", "Ryanair": "FR", "Air Europa": "UX",
   "Iberia Express": "I2", "EasyJet": "U2", "Lufthansa": "LH",
@@ -125,15 +125,20 @@ function resolveAirlineCode(airlineName, flightNumber) {
 // ═══════════════════════════════════════════════════════════════
 
 function installTrigger() {
+  // Eliminar triggers existentes
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === "onLeadInserted") {
       ScriptApp.deleteTrigger(t);
     }
   });
+  
+  // Nuevo trigger: cada vez que cambia el sheet
+  // Usamos openById en lugar de getActive() porque el proyecto es standalone
   ScriptApp.newTrigger("onLeadInserted")
     .forSpreadsheet(SpreadsheetApp.openById('10zEyvd3P57DidwOi2UM1VnXHDnPrIWMnpTSbdZ4zX-E'))
     .onChange()
     .create();
+  
   Logger.log("✅ Trigger instalado correctamente.");
 }
 
@@ -143,17 +148,30 @@ function installTrigger() {
 // ═══════════════════════════════════════════════════════════════
 
 function onLeadInserted(e) {
+  // Solo procesar inserciones de fila
   if (e && e.changeType !== "INSERT_ROW") return;
+  
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var leadsSheet = ss.getSheetByName(LEGAL_CONFIG.SHEET_LEADS);
   if (!leadsSheet) return;
+  
   var lastRow = leadsSheet.getLastRow();
-  if (lastRow < 2) return;
+  if (lastRow < 2) return; // Sin datos
+  
+  // Leer el lead
   var lead = readLead(leadsSheet, lastRow);
+  
+  // Solo procesar si no ha sido scored ya
   if (lead.scored) return;
+  
   try {
+    // Ejecutar scoring
     var result = scoreCase(lead);
+    
+    // Escribir en Scored_Leads
     writeScoredLead(ss, lead, result);
+    
+    // Acciones según decisión
     if (result.decision === "ACCEPTED") {
       writeOnboardingQueue(ss, lead, result);
       sendAcceptanceNotification(lead, result);
@@ -163,15 +181,20 @@ function onLeadInserted(e) {
     } else {
       sendRejectionEmail(lead, result);
     }
+    
+    // Marcar como procesado en Leads
     leadsSheet.getRange(lastRow, LEGAL_CONFIG.COL.SCORED).setValue("SCORED");
     leadsSheet.getRange(lastRow, LEGAL_CONFIG.COL.ESTADO).setValue(result.decision);
+    
   } catch(error) {
     Logger.log("❌ Error en scoring: " + error.toString());
-    MailApp.sendEmail(
+    GmailApp.sendEmail(
       LEGAL_CONFIG.ADMIN_EMAIL,
       "⚠️ Error Agente 2 AeroReclaim",
-      "Lead: " + lead.email + "\nError: " + error.toString() + "\nStack: " + error.stack
+      "Lead: " + lead.email + "\nError: " + error.toString() + "\nStack: " + error.stack,
+      { from: 'info@aeroreclaim.com', name: 'AeroReclaim Sistema' }
     );
+    // Marcar para revisión manual
     leadsSheet.getRange(lastRow, LEGAL_CONFIG.COL.ESTADO).setValue("ERROR");
   }
 }
@@ -183,23 +206,32 @@ function onLeadInserted(e) {
 
 function readLead(sheet, row) {
   var values = sheet.getRange(row, 1, 1, 11).getValues()[0];
+  
   var airlineName  = String(values[LEGAL_CONFIG.COL.AEROLINEA - 1] || "");
   var flightNumber = String(values[LEGAL_CONFIG.COL.VUELO     - 1] || "");
+  // FIX AER-109: si Aerolínea está vacía, extraer IATA del prefijo del vuelo
   var airlineCode  = resolveAirlineCode(airlineName, flightNumber);
+  
+  // Parsear incidencia
   var incidencia = String(values[LEGAL_CONFIG.COL.INCIDENCIA - 1] || "").toLowerCase();
-  var tipoIncidencia = "retraso";
-  var horasRetraso = 4;
+  var tipoIncidencia = "retraso"; // default
+  var horasRetraso = 4; // default
+  
   if (incidencia.indexOf("cancel") >= 0) {
-    tipoIncidencia = "cancelacion"; horasRetraso = 99;
+    tipoIncidencia = "cancelacion";
+    horasRetraso = 99;
   } else if (incidencia.indexOf("overbooking") >= 0 || incidencia.indexOf("embarque") >= 0) {
-    tipoIncidencia = "overbooking"; horasRetraso = 99;
+    tipoIncidencia = "overbooking";
+    horasRetraso = 99;
   } else if (incidencia.indexOf("conexi") >= 0) {
-    tipoIncidencia = "conexion_perdida"; horasRetraso = 4;
+    tipoIncidencia = "conexion_perdida";
+    horasRetraso = 4;
   } else if (incidencia.indexOf(">3") >= 0 || incidencia.indexOf("3h") >= 0) {
     horasRetraso = 4;
   } else if (incidencia.indexOf(">5") >= 0 || incidencia.indexOf("5h") >= 0) {
     horasRetraso = 6;
   }
+  
   return {
     row: row,
     timestamp: values[LEGAL_CONFIG.COL.TIMESTAMP - 1],
@@ -219,6 +251,7 @@ function readLead(sheet, row) {
 }
 
 function extractAirlineCode(name) {
+  // Intentar extraer código de 2 letras del número de vuelo
   for (var key in AIRLINE_CODES) {
     if (name.toLowerCase().indexOf(key.toLowerCase()) >= 0) {
       return AIRLINE_CODES[key];
@@ -245,8 +278,10 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 function getAirportDB() {
   var cached = CacheService.getScriptCache().get("AIRPORT_DB");
   if (cached) return JSON.parse(cached);
+  
   var db = PropertiesService.getScriptProperties().getProperty("AIRPORT_DB");
   if (db) {
+    // Cache for 6 hours
     try { CacheService.getScriptCache().put("AIRPORT_DB", db, 21600); } catch(e) {}
     return JSON.parse(db);
   }
@@ -274,8 +309,13 @@ function isEUAirport(iataCode) {
 }
 
 function calcularCompensacion(distanciaKm, tipoIncidencia, horasRetraso, esIntraUE) {
-  if (distanciaKm <= 1500) return { euros: 250, categoria: "corta" };
-  if (distanciaKm <= 3500 || esIntraUE) return { euros: 400, categoria: "media" };
+  if (distanciaKm <= 1500) {
+    return { euros: 250, categoria: "corta" };
+  }
+  if (distanciaKm <= 3500 || esIntraUE) {
+    return { euros: 400, categoria: "media" };
+  }
+  // > 3500 km, no intra-UE
   if (tipoIncidencia === "retraso" && horasRetraso >= 3 && horasRetraso < 4) {
     return { euros: 300, categoria: "larga_reducida" };
   }
@@ -291,14 +331,19 @@ function verificarVuelo(flightNumber, dateStr) {
   if (!flightNumber || flightNumber.length < 3) {
     return { found: false, source: "NONE", note: "Sin número de vuelo" };
   }
+  
   var apiKey = PropertiesService.getScriptProperties().getProperty("AERODATABOX_KEY");
   if (!apiKey) {
     return { found: false, source: "NO_API_KEY", note: "API key no configurada" };
   }
+  
+  // Formatear fecha
   var fecha = new Date(dateStr);
   var dateFormatted = Utilities.formatDate(fecha, "UTC", "yyyy-MM-dd");
+  
   var url = "https://aerodatabox.p.rapidapi.com/flights/number/" + 
             encodeURIComponent(flightNumber) + "/" + dateFormatted;
+  
   try {
     var response = UrlFetchApp.fetch(url, {
       method: "GET",
@@ -308,18 +353,24 @@ function verificarVuelo(flightNumber, dateStr) {
       },
       muteHttpExceptions: true
     });
+    
     var statusCode = response.getResponseCode();
+    
     if (statusCode === 200) {
       var data = JSON.parse(response.getContentText());
       var flight = Array.isArray(data) ? data[0] : data;
+      
       if (!flight) return { found: false, source: "AeroDataBox" };
+      
       var schedArr = flight.arrival && flight.arrival.scheduledTimeLocal ? 
                      new Date(flight.arrival.scheduledTimeLocal) : null;
       var actArr = flight.arrival && flight.arrival.actualTimeLocal ? 
                    new Date(flight.arrival.actualTimeLocal) : schedArr;
       var delayMin = (schedArr && actArr) ? (actArr - schedArr) / 60000 : 0;
+      
       return {
-        found: true, source: "AeroDataBox",
+        found: true,
+        source: "AeroDataBox",
         origin: flight.departure && flight.departure.airport ? flight.departure.airport.iata : null,
         destination: flight.arrival && flight.arrival.airport ? flight.arrival.airport.iata : null,
         delayMinutes: Math.max(0, delayMin),
@@ -349,12 +400,22 @@ function generateCasoId() {
 }
 
 function scoreCase(lead) {
+  // Intentar verificar vuelo
   var flightData = verificarVuelo(lead.vuelo, lead.fechaVuelo);
+  
+  // Determinar origen/destino
   var origen = null, destino = null;
-  if (flightData.found === true) { origen = flightData.origin; destino = flightData.destination; }
-  var distanciaKm = 0, intraEU = false;
+  if (flightData.found === true) {
+    origen = flightData.origin;
+    destino = flightData.destination;
+  }
+  
+  // Calcular distancia si tenemos ambos aeropuertos
+  var distanciaKm = 0;
+  var intraEU = false;
   var origCoords = origen ? getAirportCoords(origen) : null;
   var destCoords = destino ? getAirportCoords(destino) : null;
+  
   if (origCoords && destCoords) {
     distanciaKm = haversineDistance(origCoords.lat, origCoords.lon, destCoords.lat, destCoords.lon);
     intraEU = isIntraEU(origen, destino);
@@ -365,78 +426,141 @@ function scoreCase(lead) {
     else { distanciaKm = 1000; }
     intraEU = true;
   }
+  
+  // FIX AER-109: el override "fuera de ámbito CE 261" SOLO aplica cuando
+  // AeroDataBox SI devolvió datos y confirma ruta no-UE + aerolínea no-UE.
+  // Si AeroDataBox falló → NO rechazar aquí, dejar que pase a scoring → REVIEW.
   var airlineCodeUpper = (lead.airlineCode || '').toUpperCase();
   if (flightData.found === true && !intraEU &&
       EU_AIRLINE_CODES.indexOf(airlineCodeUpper) < 0) {
     return {
-      casoId: generateCasoId(), decision: 'REJECTED', scoreTotal: 0,
-      motivo: 'Fuera del ámbito CE 261/2004: ruta no-UE y aerolínea no-UE (' + (airlineCodeUpper || '?') + ').',
-      compensacion: 0, distanciaKm: Math.round(distanciaKm), intraEU: intraEU,
-      origen: origen, destino: destino, flightData: flightData, vueloVerificado: true,
-      fuenteVerificacion: flightData.source || 'AeroDataBox', categoriaVuelo: 'fuera_ambito',
+      casoId:       generateCasoId(),
+      decision:     'REJECTED',
+      scoreTotal:   0,
+      motivo:       'Fuera del ámbito CE 261/2004: ruta no-UE y aerolínea no-UE (' + (airlineCodeUpper || '?') + ').',
+      compensacion: 0,
+      distanciaKm:  Math.round(distanciaKm),
+      intraEU:      intraEU,
+      origen:       origen,
+      destino:      destino,
+      flightData:   flightData,
+      vueloVerificado: true,
+      fuenteVerificacion: flightData.source || 'AeroDataBox',
+      categoriaVuelo: 'fuera_ambito',
       f1: 0, f2: 0, f3: 0, f4: 0, f5: 0, f6: 0
     };
   }
+
   var comp = calcularCompensacion(distanciaKm, lead.tipoIncidencia, lead.horasRetraso, intraEU);
+  
+  // ─── F1: ELEGIBILIDAD BASE (0-30) ────────────────────────────────────────
   var f1 = 0;
-  if (flightData.found === true) f1 += 10; else f1 += 3;
+  if (flightData.found === true) f1 += 10;
+  else f1 += 3;
   var cubierto = false;
   if (origen && isEUAirport(origen)) { cubierto = true; f1 += 10; }
   else if (destino && isEUAirport(destino)) { cubierto = true; f1 += 8; }
   else { f1 += 5; }
   var retrasoVerificado = flightData.found === true ? flightData.delayHours : lead.horasRetraso;
-  if (lead.tipoIncidencia === "cancelacion" || lead.tipoIncidencia === "overbooking") { f1 += 10; }
-  else if (retrasoVerificado >= 3) { f1 += 10; }
-  else if (retrasoVerificado >= 2) { f1 += 5; }
+  if (lead.tipoIncidencia === "cancelacion" || lead.tipoIncidencia === "overbooking") {
+    f1 += 10;
+  } else if (retrasoVerificado >= 3) {
+    f1 += 10;
+  } else if (retrasoVerificado >= 2) {
+    f1 += 5;
+  } else {
+    f1 += 0;
+  }
+  
+  // ─── F2: TIPO DE INCIDENCIA (0-20) ──────────────────────────────────
   var f2 = 0;
   switch(lead.tipoIncidencia) {
-    case "overbooking": f2 = 20; break; case "cancelacion": f2 = 18; break;
-    case "retraso": f2 = 14; break; default: f2 = 10; break;
+    case "overbooking":       f2 = 20; break;
+    case "cancelacion":       f2 = 18; break;
+    case "retraso":           f2 = 14; break;
+    case "conexion_perdida":  f2 = 10; break;
+    default:                  f2 = 10; break;
   }
+  
+  // ─── F3: FUERZA MAYOR (0-20, penalización) ─────────────────────────
   var f3 = 18;
-  if (flightData.found === true && !flightData.cancelled && flightData.delayHours < 2) f3 = 5;
+  if (flightData.found === true && !flightData.cancelled && flightData.delayHours < 2) {
+    f3 = 5;
+  }
+  
+  // ─── F4: AEROLÍNEA (0-15) ──────────────────────────────────────────
   var profile = AIRLINE_PROFILES[lead.airlineCode] || AIRLINE_PROFILES["DEFAULT"];
-  var f4 = Math.max(0, Math.min(15, 8 + profile.scoreBonus));
+  var f4 = 8;
+  f4 = Math.max(0, Math.min(15, f4 + profile.scoreBonus));
+  
+  // ─── F5: ANTIGÜEDAD (0-10) ─────────────────────────────────────────
   var f5 = 10;
   var fechaVuelo = new Date(lead.fechaVuelo);
   var hoy = new Date();
-  var anosPasados = Math.floor((hoy - fechaVuelo) / (1000 * 60 * 60 * 24)) / 365;
-  if (anosPasados > 5) { f5 = 0; } else if (anosPasados > 4) { f5 = 2; }
-  else if (anosPasados > 3) { f5 = 5; } else if (anosPasados > 2) { f5 = 7; }
-  else if (anosPasados > 1) { f5 = 9; } else { f5 = 10; }
+  var diasPasados = Math.floor((hoy - fechaVuelo) / (1000 * 60 * 60 * 24));
+  var anosPasados = diasPasados / 365;
+  if (anosPasados > 5) { f5 = 0; }
+  else if (anosPasados > 4) { f5 = 2; }
+  else if (anosPasados > 3) { f5 = 5; }
+  else if (anosPasados > 2) { f5 = 7; }
+  else if (anosPasados > 1) { f5 = 9; }
+  else { f5 = 10; }
+  
+  // ─── F6: RECLAMACIÓN PREVIA (0-5) ────────────────────────────────
   var f6 = 5;
-  var scoreTotal = Math.max(0, Math.min(100, f1 + f2 + f3 + f4 + f5 + f6));
+  
+  var scoreTotal = f1 + f2 + f3 + f4 + f5 + f6;
+  scoreTotal = Math.max(0, Math.min(100, scoreTotal));
+  
   var decision, motivo;
   if (anosPasados > 5) {
-    decision = "REJECTED"; motivo = "Caso prescrito: han pasado más de 5 años desde el vuelo (límite legal en España).";
+    decision = "REJECTED";
+    motivo = "Caso prescrito: han pasado más de 5 años desde el vuelo (límite legal en España).";
     scoreTotal = Math.min(scoreTotal, 20);
   } else if (flightData.found === true && !flightData.cancelled && flightData.delayHours < 3 && lead.tipoIncidencia === "retraso") {
     if (lead.horasRetraso >= 3) {
-      decision = "REVIEW"; motivo = "AeroDataBox registra " + flightData.delayHours.toFixed(1) + "h pero el pasajero declaró retraso ≥3h — verificación manual requerida.";
+      // AeroDataBox delay=0 o bajo pero pasajero declaró ≥3h — REVISIÓN_MANUAL (CLAUDE.md regla #1)
+      decision = "REVIEW";
+      motivo = "AeroDataBox registra " + flightData.delayHours.toFixed(1) + "h pero el pasajero declaró retraso ≥3h — verificación manual requerida.";
     } else {
-      decision = "REJECTED"; motivo = "Retraso verificado de " + flightData.delayHours.toFixed(1) + "h — inferior a las 3h requeridas por CE 261/2004.";
+      decision = "REJECTED";
+      motivo = "Retraso verificado de " + flightData.delayHours.toFixed(1) + "h — inferior a las 3h requeridas por CE 261/2004.";
       scoreTotal = Math.min(scoreTotal, 30);
     }
   } else if (flightData.found === false && (lead.compensacionPrev || lead.tipoIncidencia)) {
-    decision = "REVIEW"; motivo = "AeroDataBox no devolvio datos del vuelo " + lead.vuelo + " — verificación manual requerida (" + (flightData.note || flightData.source) + ").";
+    // FIX AER-109: AeroDataBox no encontró el vuelo → no hay info suficiente para rechazar → REVIEW
+    decision = "REVIEW";
+    motivo = "AeroDataBox no devolvió datos del vuelo " + lead.vuelo + " — verificación manual requerida (" + (flightData.note || flightData.source) + ").";
   } else if (scoreTotal >= LEGAL_CONFIG.SCORE_ACCEPT) {
-    decision = "ACCEPTED"; motivo = "Caso aceptado automáticamente. Score " + scoreTotal + "/100.";
+    decision = "ACCEPTED";
+    motivo = "Caso aceptado automáticamente. Score " + scoreTotal + "/100.";
   } else if (scoreTotal >= LEGAL_CONFIG.SCORE_REVIEW) {
-    decision = "REVIEW"; motivo = "Score " + scoreTotal + "/100 — requiere revisión manual. ";
+    decision = "REVIEW";
+    motivo = "Score " + scoreTotal + "/100 — requiere revisión manual. ";
     if (f1 < 15) motivo += "Elegibilidad base baja. ";
     if (f3 < 10) motivo += "Posible fuerza mayor. ";
     if (f4 < 5) motivo += "Aerolínea con alta litigiosidad. ";
   } else {
-    decision = "REJECTED"; motivo = "Score " + scoreTotal + "/100 — caso no viable. ";
+    decision = "REJECTED";
+    motivo = "Score " + scoreTotal + "/100 — caso no viable. ";
     if (f1 < 10) motivo += "No cumple requisitos CE 261/2004. ";
     if (f5 < 3) motivo += "Caso muy antiguo. ";
   }
+  
   return {
-    scoreTotal: scoreTotal, f1: f1, f2: f2, f3: f3, f4: f4, f5: f5, f6: f6,
-    decision: decision, motivo: motivo, distanciaKm: Math.round(distanciaKm),
-    intraEU: intraEU, compensacion: comp.euros, categoriaVuelo: comp.categoria,
-    vueloVerificado: flightData.found === true, fuenteVerificacion: flightData.source || "NONE",
-    origen: origen, destino: destino, casoId: generateCasoId()
+    scoreTotal: scoreTotal,
+    f1: f1, f2: f2, f3: f3, f4: f4, f5: f5, f6: f6,
+    decision: decision,
+    motivo: motivo,
+    distanciaKm: Math.round(distanciaKm),
+    intraEU: intraEU,
+    compensacion: comp.euros,
+    categoriaVuelo: comp.categoria,
+    vueloVerificado: flightData.found === true,
+    fuenteVerificacion: flightData.source || "NONE",
+    origen: origen,
+    destino: destino,
+    casoId: generateCasoId()
   };
 }
 
@@ -486,7 +610,7 @@ function writeReviewQueue(ss, lead, result) {
 // ═══════════════════════════════════════════════════════════════
 
 function sendAcceptanceNotification(lead, result) {
-  MailApp.sendEmail(
+  GmailApp.sendEmail(
     LEGAL_CONFIG.NOTIFICATION_EMAIL,
     "✅ Nuevo caso ACEPTADO — " + result.casoId,
     "Caso aceptado automáticamente.\n\n" +
@@ -494,26 +618,30 @@ function sendAcceptanceNotification(lead, result) {
     "Vuelo: " + lead.vuelo + " (" + lead.fechaVuelo + ")\n" +
     "Aerolínea: " + lead.aerolinea + "\nCompensación: " + result.compensacion + "€\n" +
     "Score: " + result.scoreTotal + "/100\nCaso ID: " + result.casoId + "\n\n" +
-    "El caso está en la cola de Onboarding."
+    "El caso está en la cola de Onboarding.",
+    { from: 'info@aeroreclaim.com', name: 'AeroReclaim Sistema' }
   );
 }
 
 function sendReviewNotification(lead, result) {
-  MailApp.sendEmail(
+  GmailApp.sendEmail(
     LEGAL_CONFIG.NOTIFICATION_EMAIL,
     "🔍 Caso para REVISIÓN — " + result.casoId,
     "Caso requiere revisión manual.\n\n" +
     "Pasajero: " + lead.nombre + "\nEmail: " + lead.email + "\n" +
     "Vuelo: " + lead.vuelo + " (" + lead.fechaVuelo + ")\n" +
     "Aerolínea: " + lead.aerolinea + "\nScore: " + result.scoreTotal + "/100\n" +
-    "Motivo: " + result.motivo + "\nCaso ID: " + result.casoId
+    "Motivo: " + result.motivo + "\nCaso ID: " + result.casoId,
+    { from: 'info@aeroreclaim.com', name: 'AeroReclaim Sistema' }
   );
 }
 
 function sendRejectionEmail(lead, result) {
   if (lead.email && lead.email.indexOf("@") > 0 && lead.email.indexOf("test") < 0) {
-    MailApp.sendEmail({
+    GmailApp.sendEmail({
       to: lead.email,
+      from: 'info@aeroreclaim.com',
+      name: 'AeroReclaim',
       subject: "AeroReclaim — Resultado de tu consulta",
       htmlBody: 
         "<p>Hola " + lead.nombre + ",</p>" +
@@ -526,23 +654,22 @@ function sendRejectionEmail(lead, result) {
         "<li>Intentar reclamar directamente a " + lead.aerolinea + " a través de su web oficial</li>" +
         "<li>Si la rechazan, puedes acudir a la <a href='https://www.seguridadaerea.gob.es/es/ambitos/los-derechos-de-los-pasajeros-aereos/reclamaciones'>AESA</a> (gratuito pero lento)</li>" +
         "</ul><p>Si tu situación cambia o tienes otro vuelo afectado, no dudes en volver a consultarnos en <a href='https://aeroreclaim.com'>aeroreclaim.com</a>.</p>" +
-        "<p>Un saludo,<br>El equipo de AeroReclaim</p>",
-      from: 'info@aeroreclaim.com',
-      name: 'AeroReclaim'
+        "<p>Un saludo,<br>El equipo de AeroReclaim</p>"
     });
   }
-  MailApp.sendEmail(
+  GmailApp.sendEmail(
     LEGAL_CONFIG.NOTIFICATION_EMAIL,
     "❌ Caso RECHAZADO — " + result.casoId,
     "Caso rechazado automáticamente.\n\n" +
     "Pasajero: " + lead.nombre + " (" + lead.email + ")\n" +
-    "Vuelo: " + lead.vuelo + "\nScore: " + result.scoreTotal + "/100\nMotivo: " + result.motivo
+    "Vuelo: " + lead.vuelo + "\nScore: " + result.scoreTotal + "/100\nMotivo: " + result.motivo,
+    { from: 'info@aeroreclaim.com', name: 'AeroReclaim Sistema' }
   );
 }
 
 
 // ═══════════════════════════════════════════════════════════════
-// TESTING
+// TESTING — Ejecutar manualmente para probar
 // ═══════════════════════════════════════════════════════════════
 
 function testScoring() {
@@ -571,29 +698,33 @@ function testScoringMock() {
   Logger.log("F1=" + result.f1 + " F2=" + result.f2 + " F3=" + result.f3 +
              " F4=" + result.f4 + " F5=" + result.f5 + " F6=" + result.f6);
   Logger.log("Compensación: " + result.compensacion + "€");
+  Logger.log("Full: " + JSON.stringify(result, null, 2));
   return result;
 }
 
+// FIX AER-109: test del caso AR-106 que disparó el bug
 function testAR106VuelingEmptyAirline() {
   var lead = {
     row: 0, timestamp: new Date(), nombre: "Test Pol AR-106",
     email: "ptusquets+test106@gmail.com",
     vuelo: "VY1003", fechaVuelo: "2026-04-15",
-    aerolinea: "",
+    aerolinea: "",  // ← columna Aerolínea vacía (caso real)
     incidencia: "retraso >3h", tipoIncidencia: "retraso", horasRetraso: 4,
     compensacionPrev: "250€", scored: false
   };
+  // Resolver código como lo hace readLead()
   lead.airlineCode = resolveAirlineCode(lead.aerolinea, lead.vuelo);
   Logger.log("airlineCode resuelto: " + lead.airlineCode + " (esperado VY)");
   var result = scoreCase(lead);
   Logger.log("Decisión: " + result.decision + " (NO debe ser REJECTED por no-UE)");
   Logger.log("Motivo: " + result.motivo);
+  Logger.log("CasoId: " + result.casoId + " (NO debe ser undefined)");
   return result;
 }
 
 
 // ═══════════════════════════════════════════════════════════════
-// SETUP: Cargar base de aeropuertos
+// SETUP: Cargar base de aeropuertos (ejecutar UNA VEZ)
 // ═══════════════════════════════════════════════════════════════
 
 function loadAirportDB() {
@@ -627,7 +758,7 @@ function loadAirportDBFromURL() {
     PropertiesService.getScriptProperties().setProperty("AIRPORT_DB", jsonStr);
     Logger.log("✅ Base de aeropuertos cargada: " + totalKeys + " aeropuertos (" + jsonStr.length + " bytes)");
   } else {
-    Logger.log("⚠️ Solo se cargaron " + totalKeys + " aeropuertos. Esperado: ~787.");
+    Logger.log("⚠️ Solo se cargaron " + totalKeys + " aeropuertos. Esperado: ~787. Revisa las URLs.");
   }
 }
 
@@ -676,35 +807,13 @@ function verificarVueloConRetry(flightNumber, fechaVuelo, maxRetries) {
       }
     }
   }
-  return { found: false, source: 'RETRY_EXHAUSTED', note: lastErr ? lastErr.toString() : 'Sin respuesta' };
+  Logger.log('[retry] AeroDataBox agotó ' + retries + ' intentos para ' + flightNumber);
+  return {
+    found: false,
+    source: 'RETRY_EXHAUSTED',
+    note: lastErr ? lastErr.toString() : 'Sin respuesta tras ' + retries + ' intentos'
+  };
 }
-
-// ─── COLUMNAS GARANTIZADAS (fix AER-124) ─────────────────────────────
-// Previene getRange(number, null) si LEGAL_CONFIG.COL no está sincronizado
-(function ensureColConfig() {
-  var c = LEGAL_CONFIG.COL;
-  if (!c)                c = LEGAL_CONFIG.COL = {};
-  if (!c.TIMESTAMP)      c.TIMESTAMP    = 1;
-  if (!c.NOMBRE)         c.NOMBRE       = 2;
-  if (!c.EMAIL)          c.EMAIL        = 3;
-  if (!c.VUELO)          c.VUELO        = 4;
-  if (!c.FECHA_VUELO)    c.FECHA_VUELO  = 5;
-  if (!c.AEROLINEA)      c.AEROLINEA    = 6;
-  if (!c.INCIDENCIA)     c.INCIDENCIA   = 7;
-  if (!c.COMPENSACION)   c.COMPENSACION = 8;
-  if (!c.ESTADO)         c.ESTADO       = 9;
-  if (!c.REFERRAL)       c.REFERRAL     = 10;
-  if (!c.SCORED)         c.SCORED       = 11;
-})();
-
-function safeCol(colValue, colName) {
-  var n = parseInt(colValue, 10);
-  if (!n || n < 1 || n > 50) {
-    throw new Error('Columna "' + (colName || '?') + '" no está definida en LEGAL_CONFIG.COL (valor: ' + colValue + ').');
-  }
-  return n;
-}
-
 
 function scorePendingLeads() {
   var startTime = Date.now();
@@ -714,15 +823,12 @@ function scorePendingLeads() {
   var lastRow = leadsSheet.getLastRow();
   if (lastRow < 2) { Logger.log('[scorePendingLeads] Sin leads. Saliendo.'); return; }
 
-  var COL = LEGAL_CONFIG.COL;
-  Logger.log('[scorePendingLeads] Columnas: SCORED=' + COL.SCORED + ' ESTADO=' + COL.ESTADO + ' EMAIL=' + COL.EMAIL);
-
   var allData  = leadsSheet.getRange(2, 1, lastRow - 1, 11).getValues();
   var pending  = [];
   for (var i = 0; i < allData.length; i++) {
-    var scoredVal = String(allData[i][COL.SCORED - 1] || '').trim();
-    var estadoVal = String(allData[i][COL.ESTADO - 1] || '').trim();
-    var emailVal  = String(allData[i][COL.EMAIL  - 1] || '').trim();
+    var scoredVal = String(allData[i][LEGAL_CONFIG.COL.SCORED - 1] || '').trim();
+    var estadoVal = String(allData[i][LEGAL_CONFIG.COL.ESTADO - 1] || '').trim();
+    var emailVal  = String(allData[i][LEGAL_CONFIG.COL.EMAIL  - 1] || '').trim();
     if (scoredVal === 'SCORED' || scoredVal === 'TEST_CLOSED') continue;
     if (estadoVal === 'PENDING_MANUAL' || estadoVal === 'ERROR_PERMANENT') continue;
     if (!emailVal || emailVal === '') continue;
@@ -735,26 +841,27 @@ function scorePendingLeads() {
   var processed = 0, errors = 0;
   for (var j = 0; j < pending.length && processed < SCORING_CONFIG.BATCH_SIZE; j++) {
     if (Date.now() - startTime > SCORING_CONFIG.TIMEOUT_GUARD_MS) {
-      Logger.log('[scorePendingLeads] ⏱️ Timeout guard. Parando batch.');
+      Logger.log('[scorePendingLeads] ⏱️ Timeout guard: ' + Math.round((Date.now() - startTime) / 1000) + 's. Parando batch.');
       break;
     }
     var item = pending[j], actualRow = item.rowIndex, rowData = item.data;
-    var currentScored = String(leadsSheet.getRange(actualRow, safeCol(COL.SCORED, 'SCORED')).getValue() || '').trim();
+    var currentScored = String(leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.SCORED).getValue() || '').trim();
     if (currentScored === 'SCORED' || currentScored === 'TEST_CLOSED') continue;
 
     var lead = {
       row: actualRow,
-      timestamp: rowData[COL.TIMESTAMP - 1],
-      nombre: String(rowData[COL.NOMBRE - 1] || ''),
-      email: String(rowData[COL.EMAIL - 1] || ''),
-      vuelo: String(rowData[COL.VUELO - 1] || ''),
-      fechaVuelo: rowData[COL.FECHA_VUELO - 1],
-      aerolinea: String(rowData[COL.AEROLINEA - 1] || ''),
-      incidencia: String(rowData[COL.INCIDENCIA - 1] || '').toLowerCase(),
-      compensacionPrev: String(rowData[COL.COMPENSACION - 1] || ''),
+      timestamp: rowData[LEGAL_CONFIG.COL.TIMESTAMP - 1],
+      nombre: String(rowData[LEGAL_CONFIG.COL.NOMBRE - 1] || ''),
+      email: String(rowData[LEGAL_CONFIG.COL.EMAIL - 1] || ''),
+      vuelo: String(rowData[LEGAL_CONFIG.COL.VUELO - 1] || ''),
+      fechaVuelo: rowData[LEGAL_CONFIG.COL.FECHA_VUELO - 1],
+      aerolinea: String(rowData[LEGAL_CONFIG.COL.AEROLINEA - 1] || ''),
+      incidencia: String(rowData[LEGAL_CONFIG.COL.INCIDENCIA - 1] || '').toLowerCase(),
+      compensacionPrev: String(rowData[LEGAL_CONFIG.COL.COMPENSACION - 1] || ''),
       referralSource: String(rowData[9] || ''),
       scored: false
     };
+    // FIX AER-109: usar resolveAirlineCode (incluye fallback al prefijo del vuelo)
     lead.airlineCode = resolveAirlineCode(lead.aerolinea, lead.vuelo);
     lead.tipoIncidencia = 'retraso'; lead.horasRetraso = 4;
     if (lead.incidencia.indexOf('cancel') >= 0)           { lead.tipoIncidencia = 'cancelacion'; lead.horasRetraso = 99; }
@@ -767,13 +874,13 @@ function scorePendingLeads() {
     var retryCount = retryMatch ? parseInt(retryMatch[1]) : 0;
 
     if (retryCount >= SCORING_CONFIG.MAX_RETRIES) {
-      leadsSheet.getRange(actualRow, safeCol(COL.ESTADO, 'ESTADO')).setValue('PENDING_MANUAL');
-      leadsSheet.getRange(actualRow, safeCol(COL.SCORED, 'SCORED')).setValue('PENDING_MANUAL');
-      Logger.log('[scorePendingLeads] Dead-letter: ' + lead.email + ' → PENDING_MANUAL');
+      leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.ESTADO).setValue('PENDING_MANUAL');
+      leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.SCORED).setValue('PENDING_MANUAL');
+      Logger.log('[scorePendingLeads] Dead-letter: ' + lead.email + ' tras ' + retryCount + ' reintentos → PENDING_MANUAL');
       GmailApp.sendEmail(LEGAL_CONFIG.ADMIN_EMAIL,
         '⚠️ Lead requiere revisión manual — AeroReclaim',
         'Lead ' + lead.email + ' (vuelo ' + lead.vuelo + ') no pudo ser scored tras ' +
-        retryCount + ' intentos.\nFila: ' + actualRow,
+        retryCount + ' intentos.\nFila: ' + actualRow + '\nActuar en el Sheet manualmente.',
         { from: 'info@aeroreclaim.com', name: 'AeroReclaim Sistema' });
       continue;
     }
@@ -784,14 +891,14 @@ function scorePendingLeads() {
       if (result.decision === 'ACCEPTED') { writeOnboardingQueue(ss, lead, result); sendAcceptanceNotification(lead, result); }
       else if (result.decision === 'REVIEW') { writeReviewQueue(ss, lead, result); sendReviewNotification(lead, result); }
       else { sendRejectionEmail(lead, result); }
-      leadsSheet.getRange(actualRow, safeCol(COL.SCORED, 'SCORED')).setValue('SCORED');
-      leadsSheet.getRange(actualRow, safeCol(COL.ESTADO, 'ESTADO')).setValue(result.decision);
+      leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.SCORED).setValue('SCORED');
+      leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.ESTADO).setValue(result.decision);
       processed++;
       Logger.log('[scorePendingLeads] ✅ ' + lead.email + ' → ' + result.decision + ' (' + (result.scoreTotal || 0) + '/100)');
     } catch (err) {
       errors++; retryCount++;
-      leadsSheet.getRange(actualRow, safeCol(COL.SCORED, 'SCORED')).setValue('RETRY_' + retryCount);
-      leadsSheet.getRange(actualRow, safeCol(COL.ESTADO, 'ESTADO')).setValue('ERROR');
+      leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.SCORED).setValue('RETRY_' + retryCount);
+      leadsSheet.getRange(actualRow, LEGAL_CONFIG.COL.ESTADO).setValue('ERROR');
       Logger.log('[scorePendingLeads] ❌ ' + lead.email + ' falló (intento ' + retryCount + '): ' + err.toString());
       Utilities.sleep(SCORING_CONFIG.RETRY_DELAY_MS);
     }
@@ -807,4 +914,112 @@ function scorePendingLeads() {
       'Revisar Leads Sheet → filas con RETRY_N en col K.',
       { from: 'info@aeroreclaim.com', name: 'AeroReclaim Sistema' });
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// AER-114: FIX JOSE STATUS + VCP AIRPORT + TESTS
+// ═══════════════════════════════════════════════════════════════
+
+// Helper: actualizar estado en tab Leads por email
+function writeBackLeadStatus(email, newStatus) {
+  var ss = SpreadsheetApp.openById('10zEyvd3P57DidwOi2UM1VnXHDnPrIWMnpTSbdZ4zX-E');
+  var sheet = ss.getSheetByName(LEGAL_CONFIG.SHEET_LEADS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('[writeBackLeadStatus] No hay leads.'); return 0; }
+  var data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  var updated = 0;
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][LEGAL_CONFIG.COL.EMAIL - 1] || '').trim().toLowerCase() === email.toLowerCase()) {
+      sheet.getRange(i + 2, LEGAL_CONFIG.COL.ESTADO).setValue(newStatus);
+      sheet.getRange(i + 2, LEGAL_CONFIG.COL.SCORED).setValue('SCORED');
+      Logger.log('[writeBackLeadStatus] Fila ' + (i + 2) + ' → ' + newStatus);
+      updated++;
+    }
+  }
+  Logger.log('[writeBackLeadStatus] Total actualizadas: ' + updated);
+  return updated;
+}
+
+// One-shot AER-114: corregir gallardobuiza@hotmail.com ALERTED → REJECTED en Leads + Review_Queue
+// EJECUTAR UNA SOLA VEZ
+function fixAER114_JoseStatus() {
+  var email = 'gallardobuiza@hotmail.com';
+  Logger.log('[fixAER114] Corrigiendo estado de ' + email + ' → REJECTED');
+  var n = writeBackLeadStatus(email, 'REJECTED');
+
+  // También actualizar Review_Queue si tiene entrada para AR-20260428-195159-651
+  var ss = SpreadsheetApp.openById('10zEyvd3P57DidwOi2UM1VnXHDnPrIWMnpTSbdZ4zX-E');
+  var reviewSheet = ss.getSheetByName(LEGAL_CONFIG.SHEET_REVIEW);
+  if (reviewSheet && reviewSheet.getLastRow() >= 2) {
+    var rvData = reviewSheet.getRange(2, 1, reviewSheet.getLastRow() - 1, 11).getValues();
+    for (var i = 0; i < rvData.length; i++) {
+      // Col D (índice 3) = email en Review_Queue
+      if (String(rvData[i][3] || '').trim().toLowerCase() === email.toLowerCase()) {
+        reviewSheet.getRange(i + 2, 10).setValue('REJECTED — AER-114: AD (Azul Brazilian) aerolínea no-UE, VCP (Brasil) origen no-UE → fuera CE 261/2004');
+        reviewSheet.getRange(i + 2, 11).setValue('REJECTED');
+        Logger.log('[fixAER114] Review_Queue fila ' + (i + 2) + ' marcada REJECTED');
+      }
+    }
+  }
+
+  if (n > 0) {
+    Logger.log('[fixAER114] ✅ COMPLETADO. ' + n + ' fila(s) en Leads → REJECTED. Motivo: AD no-UE + VCP no-UE.');
+  } else {
+    Logger.log('[fixAER114] ⚠️ No se encontró ' + email + ' en Leads. Verificar manualmente en Sheet.');
+  }
+}
+
+// AER-114: Añadir VCP (Campinas/Viracopos, Brasil) a la base de aeropuertos en Script Properties
+// Ejecutar si VCP no aparece en la DB (verifica primero con testScoringNoEU)
+function addVCPToAirportDB() {
+  var props = PropertiesService.getScriptProperties();
+  var dbStr = props.getProperty('AIRPORT_DB');
+  if (!dbStr) {
+    Logger.log('[addVCPToAirportDB] ⚠️ AIRPORT_DB no cargada. Ejecuta loadAirportDBFromURL() primero.');
+    return;
+  }
+  var db = JSON.parse(dbStr);
+  if (db['VCP']) {
+    Logger.log('[addVCPToAirportDB] VCP ya existe: ' + JSON.stringify(db['VCP']));
+    return;
+  }
+  db['VCP'] = { lat: -23.0074, lon: -47.1345, country: 'BR' };
+  props.setProperty('AIRPORT_DB', JSON.stringify(db));
+  try { CacheService.getScriptCache().remove('AIRPORT_DB'); } catch(e) {}
+  Logger.log('[addVCPToAirportDB] ✅ VCP añadido: lat=-23.0074, lon=-47.1345, country=BR');
+}
+
+// Test AER-114: AD8754 VCP→MAD debe ser REJECTED (AD no-UE + VCP Brasil no-UE)
+function testScoringNoEU() {
+  Logger.log('[testScoringNoEU] === TEST AER-114 ===');
+
+  var airlineCode = resolveAirlineCode('', 'AD8754');
+  Logger.log('[testScoringNoEU] airlineCode AD8754 → ' + airlineCode + ' (esperado: DEFAULT o AD)');
+
+  var origCoords = getAirportCoords('VCP');
+  var destCoords = getAirportCoords('MAD');
+  Logger.log('[testScoringNoEU] VCP coords: ' + JSON.stringify(origCoords));
+  Logger.log('[testScoringNoEU] MAD coords: ' + JSON.stringify(destCoords));
+
+  if (!origCoords) {
+    Logger.log('[testScoringNoEU] ❌ FALLO: VCP no está en AIRPORT_DB. Ejecuta addVCPToAirportDB() y repite.');
+    return false;
+  }
+  if (!destCoords) {
+    Logger.log('[testScoringNoEU] ❌ FALLO: MAD no está en AIRPORT_DB. Verifica loadAirportDBFromURL().');
+    return false;
+  }
+
+  var intraEU = isIntraEU('VCP', 'MAD');
+  var isEUAirline = EU_AIRLINE_CODES.indexOf(airlineCode.toUpperCase()) >= 0;
+  Logger.log('[testScoringNoEU] intraEU=' + intraEU + ' isEUAirline=' + isEUAirline);
+
+  var wouldReject = !intraEU && !isEUAirline;
+  if (wouldReject) {
+    Logger.log('[testScoringNoEU] ✅ PASS — AD8754 VCP→MAD → REJECTED. Fix AER-114 operativo.');
+  } else {
+    Logger.log('[testScoringNoEU] ❌ FAIL — esperado REJECTED. intraEU=' + intraEU + ' isEUAirline=' + isEUAirline);
+  }
+  return wouldReject;
 }
