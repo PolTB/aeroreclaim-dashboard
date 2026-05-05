@@ -1,6 +1,6 @@
 import { Client } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
-import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload, UpdateCommandPayload } from '@/types';
+import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload, UpdateCommandPayload, CommandArchivo } from '@/types';
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const DB_ID = process.env.COMMANDS_DATABASE_ID!;
@@ -27,6 +27,11 @@ function getUrl(props: Props, key: string): string | null {
   const p = props[key];
   return p?.type === 'url' ? (p.url ?? null) : null;
 }
+function getArchivosExtra(props: Props, key: string): CommandArchivo[] | null {
+  const raw = getRichText(props, key);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as CommandArchivo[]; } catch { return null; }
+}
 
 function parseNotionCommand(page: PageObjectResponse): NotionCommand {
   const props = page.properties;
@@ -46,6 +51,7 @@ function parseNotionCommand(page: PageObjectResponse): NotionCommand {
     url: page.url,
     archivoUrl: getUrl(props, 'Archivo_URL'),
     archivoTipo: getSelect(props, 'Archivo_Tipo') as CommandArchivoTipo | null,
+    archivosExtra: getArchivosExtra(props, 'Archivos_Extra'),
   };
 }
 
@@ -85,6 +91,11 @@ export async function createCommand(payload: CreateCommandPayload): Promise<void
   if (payload.esfuerzo) properties['Esfuerzo'] = { select: { name: payload.esfuerzo } };
   if (payload.archivoUrl) properties['Archivo_URL'] = { url: payload.archivoUrl };
   if (payload.archivoTipo) properties['Archivo_Tipo'] = { select: { name: payload.archivoTipo } };
+  if (payload.archivosExtra !== undefined) {
+    properties['Archivos_Extra'] = payload.archivosExtra?.length
+      ? { rich_text: [{ text: { content: JSON.stringify(payload.archivosExtra) } }] }
+      : { rich_text: [] };
+  }
 
   await notion.pages.create({ parent: { database_id: DB_ID }, properties });
 }
@@ -116,6 +127,11 @@ export async function updateCommand(id: string, updates: UpdateCommandPayload): 
   if (updates.esfuerzo !== undefined) properties['Esfuerzo'] = updates.esfuerzo ? { select: { name: updates.esfuerzo } } : { select: null };
   if (updates.archivoUrl !== undefined) properties['Archivo_URL'] = updates.archivoUrl ? { url: updates.archivoUrl } : { url: null };
   if (updates.archivoTipo !== undefined) properties['Archivo_Tipo'] = updates.archivoTipo ? { select: { name: updates.archivoTipo } } : { select: null };
+  if (updates.archivosExtra !== undefined) {
+    properties['Archivos_Extra'] = updates.archivosExtra?.length
+      ? { rich_text: [{ text: { content: JSON.stringify(updates.archivosExtra) } }] }
+      : { rich_text: [] };
+  }
   await notion.pages.update({ page_id: id, properties });
 }
 

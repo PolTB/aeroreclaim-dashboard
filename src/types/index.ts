@@ -139,6 +139,12 @@ export type CommandEsfuerzo = 'Baja' | 'Media' | 'Alta';
 
 export const COMMAND_ARCHIVO_TIPOS: CommandArchivoTipo[] = ['imagen', 'PDF', 'markdown', 'HTML', 'Google Doc', 'otro'];
 
+export interface CommandArchivo {
+  url: string;
+  tipo: CommandArchivoTipo;
+  nombre: string;
+}
+
 export interface NotionCommand {
   id: string;
   titulo: string;
@@ -155,6 +161,7 @@ export interface NotionCommand {
   url: string;
   archivoUrl: string | null;
   archivoTipo: CommandArchivoTipo | null;
+  archivosExtra: CommandArchivo[] | null;
 }
 
 export interface CreateCommandPayload {
@@ -167,6 +174,7 @@ export interface CreateCommandPayload {
   esfuerzo?: CommandEsfuerzo | null;
   archivoUrl?: string | null;
   archivoTipo?: CommandArchivoTipo | null;
+  archivosExtra?: CommandArchivo[] | null;
 }
 
 export interface UpdateCommandPayload {
@@ -181,6 +189,7 @@ export interface UpdateCommandPayload {
   esfuerzo?: CommandEsfuerzo | null;
   archivoUrl?: string | null;
   archivoTipo?: CommandArchivoTipo | null;
+  archivosExtra?: CommandArchivo[] | null;
 }
 
 export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [

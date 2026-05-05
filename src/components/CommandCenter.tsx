@@ -13,11 +13,11 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type {
   NotionCommand, CommandEstado, CommandDestinatario, CommandPrioridad,
-  CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload,
+  CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload, CommandArchivo,
 } from '@/types';
 import {
   COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG, COMMAND_ESTADO_ORDER,
-  ACTIVE_ESTADOS, ARCHIVED_ESTADOS, COMMAND_ARCHIVO_TIPOS,
+  ACTIVE_ESTADOS, ARCHIVED_ESTADOS,
 } from '@/types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -113,8 +113,12 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
   const [esfuerzo, setEsfuerzo] = useState<CommandEsfuerzo | null>(command.esfuerzo);
   const [respuesta, setRespuesta] = useState(command.respuesta);
   const [subchat, setSubchat] = useState(command.subchat || '');
-  const [archivoUrl, setArchivoUrl] = useState(command.archivoUrl || '');
-  const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>(command.archivoTipo || '');
+  const [archivos, setArchivos] = useState<CommandArchivo[]>(() => {
+    const list: CommandArchivo[] = [];
+    if (command.archivoUrl) list.push({ url: command.archivoUrl, tipo: command.archivoTipo ?? 'otro', nombre: '' });
+    if (command.archivosExtra?.length) list.push(...command.archivosExtra);
+    return list;
+  });
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -130,18 +134,21 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
     setUploading(true);
     setSaveError(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
-      setArchivoUrl(data.url);
-      setArchivoTipo(data.tipo);
+      const uploaded: CommandArchivo[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+        uploaded.push({ url: data.url, tipo: data.tipo as CommandArchivoTipo, nombre: data.nombre ?? file.name });
+      }
+      setArchivos(prev => [...prev, ...uploaded]);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Error al subir archivo.');
     } finally {
@@ -149,6 +156,10 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (imageInputRef.current) imageInputRef.current.value = '';
     }
+  }
+
+  function removeArchivo(index: number) {
+    setArchivos(prev => prev.filter((_, i) => i !== index));
   }
 
   async function handleSave() {
@@ -172,8 +183,10 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
         if (respuesta.trim() && estado === 'En Proceso') updates.estado = 'Respuesta Recibida';
       }
       if (subchat !== (command.subchat || '')) updates.subchat = subchat;
-      if (archivoUrl !== (command.archivoUrl || '')) updates.archivoUrl = archivoUrl || null;
-      if (archivoTipo !== (command.archivoTipo || '')) updates.archivoTipo = (archivoTipo || null) as CommandArchivoTipo | null;
+      const [firstArchivo, ...restArchivos] = archivos;
+      updates.archivoUrl = firstArchivo?.url || null;
+      updates.archivoTipo = (firstArchivo?.tipo || null) as CommandArchivoTipo | null;
+      updates.archivosExtra = restArchivos.length > 0 ? restArchivos : null;
 
       if (Object.keys(updates).length > 0) {
         await onUpdate(command.id, updates);
@@ -351,12 +364,13 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
             {/* Adjuntos */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <input ref={imageInputRef} type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
-                <input ref={fileInputRef} type="file" className="hidden" accept="*/*" onChange={handleFileUpload} />
+                <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">Adjuntos</span>
+                <input ref={imageInputRef} type="file" className="hidden" accept="image/*" multiple onChange={handleFileUpload} />
+                <input ref={fileInputRef} type="file" className="hidden" accept="*/*" multiple onChange={handleFileUpload} />
                 <button
                   onClick={() => imageInputRef.current?.click()}
                   disabled={uploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
                 >
                   {uploading ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />}
                   Imagen
@@ -364,38 +378,38 @@ function CommandDetailModal({ command, onClose, onUpdate, onDelete, onCopyPrompt
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-elevated border border-edge/60 rounded-lg text-[11px] text-ink-secondary hover:text-ink hover:border-edge-bright transition-all disabled:opacity-50"
                 >
                   <FolderOpen size={11} />
                   Archivo
                 </button>
-                {command.archivoUrl && (
-                  <a
-                    href={command.archivoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-auto inline-flex items-center gap-1 text-[10px] text-accent hover:underline"
-                  >
-                    <ExternalLink size={10} />
-                    {command.archivoTipo ?? 'Ver archivo'}
-                  </a>
-                )}
               </div>
+              {archivos.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {archivos.map((archivo, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5">
+                      <span className="text-[10px] text-ink-muted uppercase font-medium w-14 shrink-0">{archivo.tipo}</span>
+                      <a href={archivo.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-[11px] text-accent hover:underline truncate">
+                        {archivo.nombre || archivo.url}
+                      </a>
+                      <button onClick={() => removeArchivo(i)} className="text-ink-faint hover:text-danger transition-colors shrink-0">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-2">
                 <input
-                  value={archivoUrl}
-                  onChange={e => setArchivoUrl(e.target.value)}
                   placeholder="URL pública (opcional)"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val) { setArchivos(prev => [...prev, { url: val, tipo: 'otro', nombre: '' }]); (e.target as HTMLInputElement).value = ''; }
+                    }
+                  }}
                   className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
                 />
-                <select
-                  value={archivoTipo}
-                  onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
-                  className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent/60"
-                >
-                  <option value="">Tipo</option>
-                  {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
               </div>
             </div>
 
@@ -515,10 +529,12 @@ function CommandCard({ command, onClick }: { command: NotionCommand; onClick: ()
                 {format(parseISO(command.fechaCreacion), 'd MMM', { locale: es })}
               </span>
             )}
-            {command.archivoUrl && (
+            {(command.archivoUrl || command.archivosExtra?.length) && (
               <span className="text-[10px] text-accent/60">
                 <Paperclip size={9} className="inline mr-0.5" />
-                {command.archivoTipo ?? 'archivo'}
+                {(1 + (command.archivosExtra?.length ?? 0)) > 1
+                  ? `${1 + (command.archivosExtra?.length ?? 0)} archivos`
+                  : (command.archivoTipo ?? 'archivo')}
               </span>
             )}
           </div>
@@ -545,26 +561,28 @@ function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [prioridad, setPrioridad] = useState<CommandPrioridad | ''>('Media');
   const [modelo, setModelo] = useState<CommandModelo>('Sonnet');
   const [esfuerzo, setEsfuerzo] = useState<CommandEsfuerzo | ''>('Media');
-  const [archivoUrl, setArchivoUrl] = useState('');
-  const [archivoTipo, setArchivoTipo] = useState<CommandArchivoTipo | ''>('');
+  const [archivos, setArchivos] = useState<CommandArchivo[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
     setUploading(true);
     setError(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
-      setArchivoUrl(data.url);
-      setArchivoTipo(data.tipo);
+      const uploaded: CommandArchivo[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+        uploaded.push({ url: data.url, tipo: data.tipo as CommandArchivoTipo, nombre: data.nombre ?? file.name });
+      }
+      setArchivos(prev => [...prev, ...uploaded]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al subir archivo.');
     } finally {
@@ -573,12 +591,17 @@ function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCre
     }
   }
 
+  function removeArchivo(index: number) {
+    setArchivos(prev => prev.filter((_, i) => i !== index));
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!titulo.trim()) { setError('El título es obligatorio'); return; }
     setSaving(true);
     setError(null);
     try {
+      const [firstArchivo, ...restArchivos] = archivos;
       const payload: CreateCommandPayload = {
         titulo: titulo.trim(),
         prompt: prompt.trim(),
@@ -587,8 +610,9 @@ function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCre
         prioridad: (prioridad || null) as CommandPrioridad | null,
         modelo,
         esfuerzo: (esfuerzo || null) as CommandEsfuerzo | null,
-        archivoUrl: archivoUrl.trim() || null,
-        archivoTipo: (archivoTipo || null) as CommandArchivoTipo | null,
+        archivoUrl: firstArchivo?.url || null,
+        archivoTipo: (firstArchivo?.tipo || null) as CommandArchivoTipo | null,
+        archivosExtra: restArchivos.length > 0 ? restArchivos : null,
       };
       const res = await fetch('/api/notion/commands', {
         method: 'POST',
@@ -710,29 +734,28 @@ function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCre
             </div>
           </div>
 
-          {/* Archivo adjunto */}
+          {/* Archivos adjuntos */}
           <div>
             <label className="text-xs font-medium text-ink-secondary block mb-1.5">
-              Archivo adjunto <span className="text-ink-faint font-normal">(opcional)</span>
+              Adjuntos <span className="text-ink-faint font-normal">(opcional)</span>
             </label>
-            <div className="flex gap-2">
-              <input
-                value={archivoUrl}
-                onChange={e => setArchivoUrl(e.target.value)}
-                placeholder="URL pública o link Google Drive..."
-                className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
-              />
-              <select
-                value={archivoTipo}
-                onChange={e => setArchivoTipo(e.target.value as CommandArchivoTipo | '')}
-                className="bg-surface-elevated border border-edge/60 rounded-lg px-2 py-2 text-xs text-ink focus:outline-none focus:border-accent/60"
-              >
-                <option value="">Tipo</option>
-                {COMMAND_ARCHIVO_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="mt-1.5 flex items-center gap-2">
-              <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+            <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileUpload} />
+            {archivos.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {archivos.map((archivo, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1.5">
+                    <span className="text-[10px] text-ink-muted uppercase font-medium w-14 shrink-0">{archivo.tipo}</span>
+                    <a href={archivo.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-[11px] text-accent hover:underline truncate">
+                      {archivo.nombre || archivo.url}
+                    </a>
+                    <button type="button" onClick={() => removeArchivo(i)} className="text-ink-faint hover:text-danger transition-colors shrink-0">
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -740,13 +763,19 @@ function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCre
                 className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 bg-surface-elevated border border-edge/60 text-ink-muted hover:text-ink rounded-lg transition-colors disabled:opacity-50"
               >
                 {uploading ? <Loader2 size={11} className="animate-spin" /> : <Paperclip size={11} />}
-                {uploading ? 'Subiendo...' : 'Subir desde PC'}
+                {uploading ? 'Subiendo...' : 'Subir archivo(s)'}
               </button>
-              {archivoUrl && (
-                <span className="text-[10px] text-success flex items-center gap-1">
-                  <Check size={10} /> URL lista
-                </span>
-              )}
+              <input
+                placeholder="O pega una URL y pulsa Enter"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = (e.target as HTMLInputElement).value.trim();
+                    if (val) { setArchivos(prev => [...prev, { url: val, tipo: 'otro', nombre: '' }]); (e.target as HTMLInputElement).value = ''; }
+                  }
+                }}
+                className="flex-1 bg-surface-elevated border border-edge/60 rounded-lg px-3 py-1 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent/60"
+              />
             </div>
           </div>
 

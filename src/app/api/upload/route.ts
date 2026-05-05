@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       }).catch(() => {});
     }
 
-    return NextResponse.json({ url: blob.url, tipo: detectedTipo });
+    return NextResponse.json({ url: blob.url, tipo: detectedTipo, nombre: file.name });
   } catch (err) {
     console.error('[POST /api/upload]', err);
     return NextResponse.json(
