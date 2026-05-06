@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutGrid, BarChart2, Terminal, Settings, RefreshCw, Plus,
   AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map, BookOpen, Inbox,
+  TrendingUp,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -19,6 +20,7 @@ import { CommandCenter } from './CommandCenter';
 import { AgentStatusPanel } from './AgentStatusPanel';
 import { QuickInbox } from './QuickInbox';
 import { CaseTracker } from './CaseTracker';
+import { PipelineLeads } from './PipelineLeads';
 import { RoadmapTimeline } from './RoadmapTimeline';
 import { PhaseBacklog } from './PhaseBacklog';
 import { ProximasTareas } from './ProximasTareas';
@@ -26,13 +28,14 @@ import { BlogCalendar } from './BlogCalendar';
 import { BandejaPol } from './BandejaPol';
 import type { Phase } from './RoadmapTimeline';
 
-type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'roadmap' | 'blog' | 'bandeja' | 'settings';
+type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'pipeline' | 'roadmap' | 'blog' | 'bandeja' | 'settings';
 
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
   { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
   { id: 'timeline',  label: 'Timeline',  shortLabel: 'Timeline',  icon: <BarChart2 size={13} /> },
   { id: 'commands',  label: 'Delegaciones',  shortLabel: 'Deleg',      icon: <Terminal size={13} /> },
   { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
+  { id: 'pipeline',  label: 'Pipeline',  shortLabel: 'Pipe',      icon: <TrendingUp size={13} /> },
   { id: 'roadmap',   label: 'Roadmap',   shortLabel: 'Road',      icon: <Map size={13} /> },
   { id: 'blog',      label: 'Blog',      shortLabel: 'Blog',      icon: <BookOpen size={13} /> },
   { id: 'bandeja',   label: 'Bandeja',   shortLabel: 'Bandeja',   icon: <Inbox size={13} /> },
@@ -194,7 +197,7 @@ export function Dashboard() {
   );
 
   const showTaskViews = view === 'kanban' || view === 'timeline';
-  const showFullWidth = view === 'commands' || view === 'cases' || view === 'roadmap' || view === 'blog' || view === 'bandeja' || view === 'settings';
+  const showFullWidth = view === 'commands' || view === 'cases' || view === 'pipeline' || view === 'roadmap' || view === 'blog' || view === 'bandeja' || view === 'settings';
 
   if (loading) {
     return (
@@ -306,6 +309,11 @@ export function Dashboard() {
             {view === 'cases' && (
               <motion.div key="cases" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <CaseTracker />
+              </motion.div>
+            )}
+            {view === 'pipeline' && (
+              <motion.div key="pipeline" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <PipelineLeads />
               </motion.div>
             )}
             {view === 'roadmap' && (
