@@ -29,10 +29,24 @@ const ALICIA_CASE: AeroCaso = {
 };
 
 // ─── Test cases to exclude from dashboard ─────────────────────────────────────
-const TEST_CASE_PATTERNS = ['maria test', 'test final', 'prueba'];
+const TEST_CASE_PATTERNS = ['maria test', 'test final', 'prueba', 'test ', ' test', 'anonimo', 'verificacion'];
 
 function isTestCase(nombre: string): boolean {
-  return TEST_CASE_PATTERNS.some(p => nombre.toLowerCase().includes(p));
+  const lower = nombre.toLowerCase();
+  return TEST_CASE_PATTERNS.some(p => lower.includes(p));
+}
+
+// ─── Normalize date strings to ISO (YYYY-MM-DD) ───────────────────────────────
+// Handles DD/MM/YYYY → YYYY-MM-DD; passes through ISO strings as-is.
+function normalizeDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (!t) return null;
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t)) {
+    const [d, m, y] = t.split('/');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return t;
 }
 
 // ─── Map sheet status string → pipeline stage + estado ────────────────────────
@@ -133,6 +147,7 @@ const STATUS_TO_STAGE: Record<string, typeof STAGE_ORDER[number]> = {
   AESA:              'AESA',
   AESA_FILED:        'AESA',
   ESCALADA_AESA:     'AESA',
+  AESA_PRESENTADA:   'AESA',
   // Collection
   COBRO:             'Cobro',
   COBRADO:           'Cobro',
@@ -226,16 +241,12 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
       if (isTestCase(nombre))            continue;
       if (!status || status === 'TEST_CLOSED' || status === 'CANCELADO') continue;
 
-      const rawDate = get(colDate);
-      const flightDate = rawDate.includes('/') // "30/05/2024" → "2024-05-30"
-        ? rawDate.split('/').reverse().join('-')
-        : rawDate;
-
+      const flightDate   = normalizeDate(get(colDate)) ?? '';
       const activeStage  = resolveActiveStage(status) ?? 'Lead';
-      const welcomeDate  = get(colWelcome) || null;
+      const welcomeDate  = normalizeDate(get(colWelcome));
 
       const pipeline = buildPipelineFromStage(activeStage, {
-        'Lead':    flightDate,
+        'Lead':     flightDate || undefined,
         'Aprobado': welcomeDate ?? undefined,
       });
 
@@ -244,7 +255,7 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
         pasajero:            nombre,
         vuelo:               get(colFlight),
         ruta:                `${get(colOrigin) || '?'} → ${get(colDest) || '?'}`,
-        fecha:               flightDate,
+        fecha:               flightDate || new Date().toISOString().split('T')[0],
         compensacion:        parseInt(get(colComp), 10) || 0,
         scoreLegal:          parseInt(get(colScore), 10) || 0,
         estadoActual:        activeStage,

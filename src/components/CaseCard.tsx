@@ -2,8 +2,14 @@
 
 import { motion } from 'framer-motion';
 import { Plane, Calendar, Euro, Mail, FileText } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+function safeFormat(dateStr: string | null | undefined, fmt: string): string {
+  if (!dateStr) return '—';
+  const d = parseISO(dateStr);
+  return isValid(d) ? format(d, fmt, { locale: es }) : dateStr;
+}
 import clsx from 'clsx';
 import type { AeroCaso } from '@/types';
 import { PIPELINE_STAGES } from '@/types';
@@ -59,7 +65,7 @@ export function CaseCard({ caso, index }: { caso: AeroCaso; index: number }) {
             </span>
             <span className="flex items-center gap-1">
               <Calendar size={10} />
-              {format(parseISO(caso.fecha), "d MMM ''yy", { locale: es })}
+              {safeFormat(caso.fecha, "d MMM ''yy")}
             </span>
           </div>
         </div>
@@ -108,7 +114,7 @@ export function CaseCard({ caso, index }: { caso: AeroCaso; index: number }) {
             </span>
           </div>
           <span className="text-[10px] text-ink-faint">
-            {format(parseISO(caso.ultimaActualizacion), "d MMM ''yy", { locale: es })}
+            {safeFormat(caso.ultimaActualizacion, "d MMM ''yy")}
           </span>
         </div>
 
@@ -119,7 +125,7 @@ export function CaseCard({ caso, index }: { caso: AeroCaso; index: number }) {
               <Mail size={9} className="text-success" />
               Bienvenida enviada:{' '}
               <span className="text-ink-secondary font-medium">
-                {format(parseISO(caso.welcome_sent_date), "d MMM ''yy", { locale: es })}
+                {safeFormat(caso.welcome_sent_date, "d MMM ''yy")}
               </span>
             </span>
           ) : (

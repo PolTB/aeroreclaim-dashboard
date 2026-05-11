@@ -1,8 +1,14 @@
 'use client';
 
 import { Check, Clock, Bot, User } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+function safeFormat(dateStr: string | null | undefined, fmt: string): string {
+  if (!dateStr) return '';
+  const d = parseISO(dateStr);
+  return isValid(d) ? format(d, fmt, { locale: es }) : '';
+}
 import clsx from 'clsx';
 import type { AeroCaso, StageStatus } from '@/types';
 import { PIPELINE_STAGES } from '@/types';
@@ -85,9 +91,9 @@ export function CasePipeline({ caso }: { caso: AeroCaso }) {
                   {stage}
                 </p>
 
-                {info.fecha && (
+                {info.fecha && safeFormat(info.fecha, 'd MMM') && (
                   <p className="text-[8px] text-ink-faint mt-0.5 text-center">
-                    {format(parseISO(info.fecha), 'd MMM', { locale: es })}
+                    {safeFormat(info.fecha, 'd MMM')}
                   </p>
                 )}
 
