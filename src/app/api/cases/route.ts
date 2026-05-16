@@ -234,6 +234,33 @@ const ALL_CASES: AeroCaso[] = [
 
 const FALLBACK_CASES = ALL_CASES.filter(c => !isTestCase(c.pasajero));
 
+// ─── Merge: GAS cases + hardcoded (fills gaps + advances stale states) ───────
+// Rules:
+//   1. Cases only in hardcoded (manual, not in Sheet) → always add.
+//   2. Cases in both → take the more advanced pipeline state.
+//      (e.g. Alicia: Sheet says Extrajudicial, hardcoded says AESA → use AESA)
+
+function mergeCasesWithFallback(gasCases: AeroCaso[]): AeroCaso[] {
+  const result: AeroCaso[] = gasCases.map(gc => {
+    const hc = FALLBACK_CASES.find(h => h.id === gc.id);
+    if (!hc) return gc;
+    const gasIdx = STAGE_ORDER.indexOf(gc.estadoActual);
+    const hcIdx  = STAGE_ORDER.indexOf(hc.estadoActual);
+    if (hcIdx > gasIdx) {
+      return { ...gc, estadoActual: hc.estadoActual, pipeline: hc.pipeline, notaInterna: hc.notaInterna, ultimaActualizacion: hc.ultimaActualizacion };
+    }
+    return gc;
+  });
+
+  // Add hardcoded cases absent from GAS (manual cases, rejected, etc.)
+  const gasIds = new Set(gasCases.map(c => c.id));
+  for (const hc of FALLBACK_CASES) {
+    if (!gasIds.has(hc.id)) result.push(hc);
+  }
+
+  return result;
+}
+
 // ─── GAS endpoint reader (dynamic — all cases from Google Sheet) ──────────────
 // Required env var: GAS_CASES_ENDPOINT (GAS web app URL).
 // Reads header row dynamically — no hardcoded column indices.
@@ -258,7 +285,7 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
     const rows: string[][] = obData.values ?? [];
     if (rows.length < 2) return null;
 
-    const headers    = rows[0].map((h: string) => h.trim().toLowerCase());
+    const headers = rows[0].map((h: string) => h.trim().toLowerCase());
     const col = (name: string) => headers.indexOf(name.toLowerCase());
 
     const colCaseId  = col('case_id');
@@ -284,10 +311,10 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
       const nombre = get(colName);
       const status = get(colStatus);
 
-      if (!caseId || !email || !nombre)                                    continue;
-      if (isInternalEmail(email))                                          continue;
-      if (isTestCase(nombre))                                              continue;
-      if (!status || status === 'TEST_CLOSED' || status === 'CANCELADO')  continue;
+      if (!caseId || !email || !nombre)                                   continue;
+      if (isInternalEmail(email))                                         continue;
+      if (isTestCase(nombre))                                             continue;
+      if (!status || status === 'TEST_CLOSED' || status === 'CANCELADO') continue;
 
       const flightDate  = normalizeDate(get(colDate)) ?? '';
       const activeStage = resolveActiveStage(status) ?? 'Lead';
@@ -308,7 +335,10 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
       });
     }
 
-    return cases.length > 0 ? cases : null;
+    if (cases.length === 0) return null;
+
+    // Supplement GAS data with hardcoded manual cases + advance stale states
+    return mergeCasesWithFallback(cases);
 
   } catch (err) {
     console.error('[cases] GAS fetch failed:', err);
