@@ -3,82 +3,44 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutGrid, BarChart2, Terminal, Settings, RefreshCw, Plus,
+  LayoutGrid, Terminal, RefreshCw, Plus,
   AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map, BookOpen, Inbox,
-  TrendingUp,
+  Compass, Users, Activity,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { NotionTask, Filters, UpdateTaskPayload } from '@/types';
 import { KanbanBoard } from './KanbanBoard';
-import { TimelineView } from './TimelineView';
 import { MetricsPanel } from './MetricsPanel';
 import { FilterBar } from './FilterBar';
 import { CreateTaskModal } from './CreateTaskModal';
 import { CommandCenter } from './CommandCenter';
-import { AgentStatusPanel } from './AgentStatusPanel';
 import { QuickInbox } from './QuickInbox';
-import { CaseTracker } from './CaseTracker';
-import { PipelineLeads } from './PipelineLeads';
+import { CasesView } from './CasesView';
 import { RoadmapTimeline } from './RoadmapTimeline';
 import { PhaseBacklog } from './PhaseBacklog';
 import { ProximasTareas } from './ProximasTareas';
 import { BlogCalendar } from './BlogCalendar';
 import { BandejaPol } from './BandejaPol';
+import { NortePanel } from './NortePanel';
+import { AgentesPanel } from './AgentesPanel';
+import { HealthPanel } from './HealthPanel';
 import type { Phase } from './RoadmapTimeline';
 
-type ViewMode = 'kanban' | 'timeline' | 'commands' | 'cases' | 'pipeline' | 'roadmap' | 'blog' | 'bandeja' | 'settings';
+type ViewMode = 'kanban' | 'commands' | 'cases' | 'norte' | 'roadmap' | 'agentes' | 'blog' | 'bandeja' | 'health';
 
 const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
-  { id: 'kanban',    label: 'Kanban',    shortLabel: 'Kanban',    icon: <LayoutGrid size={13} /> },
-  { id: 'timeline',  label: 'Timeline',  shortLabel: 'Timeline',  icon: <BarChart2 size={13} /> },
-  { id: 'commands',  label: 'Delegaciones',  shortLabel: 'Deleg',      icon: <Terminal size={13} /> },
-  { id: 'cases',     label: 'Cases',     shortLabel: 'Cases',     icon: <Briefcase size={13} /> },
-  { id: 'pipeline',  label: 'Pipeline',  shortLabel: 'Pipe',      icon: <TrendingUp size={13} /> },
-  { id: 'roadmap',   label: 'Roadmap',   shortLabel: 'Road',      icon: <Map size={13} /> },
-  { id: 'blog',      label: 'Blog',      shortLabel: 'Blog',      icon: <BookOpen size={13} /> },
-  { id: 'bandeja',   label: 'Bandeja',   shortLabel: 'Bandeja',   icon: <Inbox size={13} /> },
-  { id: 'settings',  label: 'Settings',  shortLabel: 'Config',    icon: <Settings size={13} /> },
+  { id: 'kanban',    label: 'Kanban',       shortLabel: 'Kanban',  icon: <LayoutGrid size={13} /> },
+  { id: 'commands',  label: 'Delegaciones', shortLabel: 'Deleg',   icon: <Terminal size={13} /> },
+  { id: 'cases',     label: 'Casos',        shortLabel: 'Casos',   icon: <Briefcase size={13} /> },
+  { id: 'norte',     label: 'Norte',        shortLabel: 'Norte',   icon: <Compass size={13} /> },
+  { id: 'roadmap',   label: 'Roadmap',      shortLabel: 'Road',    icon: <Map size={13} /> },
+  { id: 'agentes',   label: 'Agentes',      shortLabel: 'Agentes', icon: <Users size={13} /> },
+  { id: 'blog',      label: 'Blog',         shortLabel: 'Blog',    icon: <BookOpen size={13} /> },
+  { id: 'bandeja',   label: 'Bandeja',      shortLabel: 'Bandeja', icon: <Inbox size={13} /> },
+  { id: 'health',    label: 'Health',       shortLabel: 'Health',  icon: <Activity size={13} /> },
 ];
-
-// ─── Settings panel ──────────────────────────────────────────────────────────
-
-function SettingsPanel({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
-  return (
-    <div className="max-w-md flex flex-col gap-4">
-      <h2 className="text-sm font-semibold text-ink">Configuración</h2>
-      <div className="bg-surface-card border border-edge/60 rounded-xl p-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-ink">Tema</p>
-          <p className="text-xs text-ink-muted mt-0.5">Cambia entre modo oscuro y claro</p>
-        </div>
-        <button
-          onClick={onToggle}
-          className="flex items-center gap-2 px-3 py-2 bg-surface-elevated border border-edge/60 rounded-lg text-xs font-medium text-ink-secondary hover:text-ink transition-colors"
-        >
-          {isDark ? <Sun size={14} /> : <Moon size={14} />}
-          {isDark ? 'Modo claro' : 'Modo oscuro'}
-        </button>
-      </div>
-      <div className="bg-surface-card border border-edge/60 rounded-xl p-4">
-        <p className="text-sm font-medium text-ink mb-1">Base de datos Notion</p>
-        <p className="text-xs text-ink-muted">
-          DB Tasks: <code className="font-mono text-accent bg-surface-elevated px-1 rounded">abb1607fb6b0460782fc0d268a7ce21f</code>
-        </p>
-        <p className="text-xs text-ink-muted mt-1">
-          DB Delegaciones: configurar <code className="font-mono text-accent bg-surface-elevated px-1 rounded">COMMANDS_DATABASE_ID</code> en Vercel
-        </p>
-        <p className="text-xs text-ink-muted mt-1">
-          Auth: <code className="font-mono text-accent bg-surface-elevated px-1 rounded">BASIC_AUTH_USER</code> / <code className="font-mono text-accent bg-surface-elevated px-1 rounded">BASIC_AUTH_PASSWORD</code>
-        </p>
-        <p className="text-xs text-ink-muted mt-1">
-          Google Sheets (Cases): <code className="font-mono text-accent bg-surface-elevated px-1 rounded">GOOGLE_SHEETS_SPREADSHEET_ID</code> + <code className="font-mono text-accent bg-surface-elevated px-1 rounded">GOOGLE_SHEETS_API_KEY</code>
-        </p>
-      </div>
-    </div>
-  );
-}
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
@@ -196,8 +158,8 @@ export function Dashboard() {
     [tasks],
   );
 
-  const showTaskViews = view === 'kanban' || view === 'timeline';
-  const showFullWidth = view === 'commands' || view === 'cases' || view === 'pipeline' || view === 'roadmap' || view === 'blog' || view === 'bandeja' || view === 'settings';
+  const showTaskViews = view === 'kanban';
+  const showFullWidth = view === 'commands' || view === 'cases' || view === 'norte' || view === 'roadmap' || view === 'agentes' || view === 'blog' || view === 'bandeja' || view === 'health';
 
   if (loading) {
     return (
@@ -298,7 +260,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Commands / Cases / Settings: full width */}
+        {/* Full-width views */}
         {showFullWidth && (
           <AnimatePresence mode="wait">
             {view === 'commands' && (
@@ -308,12 +270,12 @@ export function Dashboard() {
             )}
             {view === 'cases' && (
               <motion.div key="cases" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <CaseTracker />
+                <CasesView />
               </motion.div>
             )}
-            {view === 'pipeline' && (
-              <motion.div key="pipeline" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <PipelineLeads />
+            {view === 'norte' && (
+              <motion.div key="norte" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <NortePanel />
               </motion.div>
             )}
             {view === 'roadmap' && (
@@ -321,6 +283,11 @@ export function Dashboard() {
                 <RoadmapTimeline onSelectPhase={setSelectedPhase} activePhaseId={selectedPhase?.id} />
                 <ProximasTareas tasks={tasks} />
                 <PhaseBacklog tasks={tasks} activePhase={selectedPhase} />
+              </motion.div>
+            )}
+            {view === 'agentes' && (
+              <motion.div key="agentes" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <AgentesPanel />
               </motion.div>
             )}
             {view === 'blog' && (
@@ -333,15 +300,15 @@ export function Dashboard() {
                 <BandejaPol />
               </motion.div>
             )}
-            {view === 'settings' && (
-              <motion.div key="settings" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <SettingsPanel isDark={isDark} onToggle={toggleTheme} />
+            {view === 'health' && (
+              <motion.div key="health" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <HealthPanel isDark={isDark} onToggle={toggleTheme} />
               </motion.div>
             )}
           </AnimatePresence>
         )}
 
-        {/* Kanban / Timeline: sidebar + main */}
+        {/* Kanban: sidebar + main */}
         {showTaskViews && (
           <div className="flex gap-5">
             {/* Sidebar */}
@@ -362,7 +329,9 @@ export function Dashboard() {
                       </div>
                       <MetricsPanel tasks={tasks} />
                     </div>
-                    <AgentStatusPanel />
+                    <p className="text-[10px] text-ink-faint px-1">
+                      Estado de agentes → pestaña <span className="text-ink-muted font-medium">Agentes</span>
+                    </p>
                   </div>
                 </motion.aside>
               )}
@@ -379,10 +348,7 @@ export function Dashboard() {
 
             {/* Main content */}
             <main className="flex-1 min-w-0">
-              {/* Quick Inbox — only in kanban view */}
-              {view === 'kanban' && (
-                <QuickInbox onTaskCreated={() => fetchTasks(true)} />
-              )}
+              <QuickInbox onTaskCreated={() => fetchTasks(true)} />
 
               {/* Filters */}
               <div className="mb-4">
@@ -400,22 +366,7 @@ export function Dashboard() {
                 </p>
               </div>
 
-              {/* Views */}
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={view}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  {view === 'kanban' ? (
-                    <KanbanBoard tasks={filteredTasks} hasEstado={hasEstado} onUpdateTask={updateTask} onTasksChange={setTasks} />
-                  ) : (
-                    <TimelineView tasks={filteredTasks} />
-                  )}
-                </motion.div>
-              </AnimatePresence>
+              <KanbanBoard tasks={filteredTasks} hasEstado={hasEstado} onUpdateTask={updateTask} onTasksChange={setTasks} />
             </main>
           </div>
         )}
@@ -427,7 +378,6 @@ export function Dashboard() {
               <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-3">Métricas</p>
               <MetricsPanel tasks={tasks} />
             </div>
-            <AgentStatusPanel />
           </div>
         )}
       </div>
