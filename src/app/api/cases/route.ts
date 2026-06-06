@@ -142,7 +142,7 @@ const ALL_CASES: AeroCaso[] = [
     estadoActual: 'Extrajudicial',
     ultimaActualizacion: '2026-05-16',
     welcome_sent_date: '2026-05-07',
-    notaInterna: 'Carta enviada a Tunisair 12/05/2026 · Plazo respuesta: ~12/06/2026',
+    notaInterna: 'Carta extrajudicial enviada a Tunisair 11/05/2026 (acuse recibo automático) · Plazo respuesta: 10/06/2026 · Si silencio → escalada AESA',
     pipeline: buildPipeline('Extrajudicial', {
       'Lead':           '2026-05-07',
       'Aprobado':       '2026-05-07',
@@ -151,7 +151,7 @@ const ALL_CASES: AeroCaso[] = [
     }),
   },
 
-  // 3. Irene Rodríguez — TU607 MAD→TUN — Docs recibidos, carta extrajudicial pendiente
+  // 3. Irene Rodríguez — TU607 MAD→TUN — Extrajudicial enviada a Tunisair
   {
     id: 'AR-20260515-MANUAL-002',
     pasajero: 'Irene Rodríguez Rodríguez',
@@ -160,14 +160,15 @@ const ALL_CASES: AeroCaso[] = [
     fecha: '2025-11-14',
     compensacion: 400,
     scoreLegal: 85,
-    estadoActual: 'Docs Recibidos',
-    ultimaActualizacion: '2026-05-16',
+    estadoActual: 'Extrajudicial',
+    ultimaActualizacion: '2026-06-06',
     welcome_sent_date: '2026-05-15',
-    notaInterna: 'ACEPTO + DNI + boarding pass recibidos 15/05/2026 · Carta extrajudicial a Tunisair pendiente',
-    pipeline: buildPipeline('Docs Recibidos', {
-      'Lead':           '2026-05-07',
-      'Aprobado':       '2026-05-07',
+    notaInterna: 'Carta extrajudicial bilingüe ES+FR enviada a Tunisair 16/05/2026 (form. ref 17423810, acuse sav@tunisair.com.tn) · Plazo respuesta: 15/06/2026 · Si silencio → escalada AESA',
+    pipeline: buildPipeline('Extrajudicial', {
+      'Lead':           '2026-05-09',
+      'Aprobado':       '2026-05-09',
       'Docs Recibidos': '2026-05-15',
+      'Extrajudicial':  '2026-05-16',
     }),
   },
 
@@ -181,9 +182,9 @@ const ALL_CASES: AeroCaso[] = [
     compensacion: 0,
     scoreLegal: 75,
     estadoActual: 'Aprobado',
-    ultimaActualizacion: '2026-05-16',
+    ultimaActualizacion: '2026-06-06',
     welcome_sent_date: '2026-05-04',
-    notaInterna: 'Mandato enviado 05/05/2026 · 1 reminder enviado · Sin respuesta aún',
+    notaInterna: 'UX15 MAD→SAP 30/05/2024 (8.430 km → 600€) · Mandato enviado 05/05/2026 + 1 reminder · Sin respuesta tras 1 mes — lead frío',
     pipeline: buildPipeline('Aprobado', {
       'Lead':     '2026-05-04',
       'Aprobado': '2026-05-05',
@@ -206,7 +207,23 @@ const ALL_CASES: AeroCaso[] = [
     pipeline: buildPipeline('Lead', { 'Lead': '2026-05-01' }),
   },
 
-  // 6. Lucas Tébar — Rechazado (retraso 1h < umbral CE 261 de 3h)
+  // 6. Luciana Ledesma — SV228 BCN→JED (Saudia) — bienvenida enviada, esperando datos
+  {
+    id: 'AR-20260531-183056-971',
+    pasajero: 'Luciana Ledesma',
+    vuelo: 'SV228',
+    ruta: 'BCN → JED',
+    fecha: '2026-01-08',
+    compensacion: 600,
+    scoreLegal: 80,
+    estadoActual: 'Lead',
+    ultimaActualizacion: '2026-06-06',
+    welcome_sent_date: '2026-06-01',
+    notaInterna: 'Elegible CE 261 art. 3.1.a (sale de BCN/UE pese a aerolínea no-UE) · ~4.900 km → 600€ si retraso llegada ≥4h / 300€ si 3–4h · Bienvenida enviada 01/06/2026 pidiendo circunstancias + DNI + boarding + ACEPTO · Sin respuesta (follow-up 06/06)',
+    pipeline: buildPipeline('Lead', { 'Lead': '2026-05-31' }),
+  },
+
+  // 7. Lucas Tébar — Rechazado (retraso 1h < umbral CE 261 de 3h)
   {
     id: 'AR-20260503-212922-112',
     pasajero: 'Lucas Tébar',
