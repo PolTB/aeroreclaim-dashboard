@@ -112,7 +112,7 @@ function buildPipelineFromStage(
   ) as AeroCaso['pipeline'];
 }
 
-// ─── Hardcoded fallback cases (all real cases — updated 2026-05-16) ───────────
+// ─── Hardcoded fallback cases (all real cases — updated 2026-07-09, AER-221) ──
 // Used when GAS_CASES_ENDPOINT is not configured or returns 0 cases.
 
 const ALL_CASES: AeroCaso[] = [
@@ -140,45 +140,47 @@ const ALL_CASES: AeroCaso[] = [
     }),
   },
 
-  // 2. Eduardo Robledo — TU607 MAD→TUN — Extrajudicial enviada a Tunisair
+  // 2. Eduardo Robledo — TU607 MAD→TUN — AESA presentada (expediente 2026/ADR02/015978)
   {
     id: 'AR-20260507-193739-001',
     pasajero: 'Eduardo Robledo',
     vuelo: 'TU607',
     ruta: 'MAD → TUN',
     fecha: '2025-11-14',
-    compensacion: 400,
+    compensacion: 250,
     scoreLegal: 85,
-    estadoActual: 'Extrajudicial',
-    ultimaActualizacion: '2026-05-16',
+    estadoActual: 'AESA',
+    ultimaActualizacion: '2026-07-09',
     welcome_sent_date: '2026-05-07',
-    notaInterna: 'Carta extrajudicial enviada a Tunisair 11/05/2026 (acuse recibo automático) · Plazo respuesta: 10/06/2026 · Si silencio → escalada AESA',
-    pipeline: buildPipeline('Extrajudicial', {
+    notaInterna: 'AESA presentada 22/06/2026 · Expediente 2026/ADR02/015978 · 250€ (corregido 20/06: distancia real 1.264km art. 7.1.a, no 1.855km/400€) · Plazo resolución 90 días naturales (~20/09/2026) · Nada pendiente hasta resolución',
+    pipeline: buildPipeline('AESA', {
       'Lead':           '2026-05-07',
       'Aprobado':       '2026-05-07',
       'Docs Recibidos': '2026-05-10',
       'Extrajudicial':  '2026-05-12',
+      'AESA':           '2026-06-22',
     }),
   },
 
-  // 3. Irene Rodríguez — TU607 MAD→TUN — Extrajudicial enviada a Tunisair
+  // 3. Irene Rodríguez — TU607 MAD→TUN — AESA presentada (expediente 2026/ADR02/015968)
   {
     id: 'AR-20260515-MANUAL-002',
     pasajero: 'Irene Rodríguez Rodríguez',
     vuelo: 'TU607',
     ruta: 'MAD → TUN',
     fecha: '2025-11-14',
-    compensacion: 400,
+    compensacion: 250,
     scoreLegal: 85,
-    estadoActual: 'Extrajudicial',
-    ultimaActualizacion: '2026-06-06',
+    estadoActual: 'AESA',
+    ultimaActualizacion: '2026-07-09',
     welcome_sent_date: '2026-05-15',
-    notaInterna: 'Carta extrajudicial bilingüe ES+FR enviada a Tunisair 16/05/2026 (form. ref 17423810, acuse sav@tunisair.com.tn) · Plazo respuesta: 15/06/2026 · Si silencio → escalada AESA',
-    pipeline: buildPipeline('Extrajudicial', {
+    notaInterna: 'AESA presentada 22/06/2026 · Expediente 2026/ADR02/015968 · 250€ (corregido 20/06: distancia real 1.264km art. 7.1.a, no 1.855km/400€) · Plazo resolución 90 días naturales (~20/09/2026) · Nada pendiente hasta resolución',
+    pipeline: buildPipeline('AESA', {
       'Lead':           '2026-05-09',
       'Aprobado':       '2026-05-09',
       'Docs Recibidos': '2026-05-15',
       'Extrajudicial':  '2026-05-16',
+      'AESA':           '2026-06-22',
     }),
   },
 
