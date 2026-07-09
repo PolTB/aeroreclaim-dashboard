@@ -3,6 +3,16 @@ import { NextResponse } from 'next/server';
 import type { AeroCaso, PipelineStage } from '@/types';
 import { trackEvent } from '@/lib/analytics';
 
+// ─── AER-215 fix: forzar ejecución dinámica ───────────────────────────────────
+// ANTES: sin 'export const dynamic', Next.js detectaba el fetch() interno con
+// next:{revalidate:60} y trataba TODA la ruta como estática/ISR, cacheando la
+// respuesta completa en el Edge de Vercel (X-Vercel-Cache: HIT, Age creciendo
+// sin límite si no hay tráfico que dispare la revalidación en background).
+// AHORA: la ruta se ejecuta en cada request. El fetch al GAS sigue cacheado
+// 60s vía Next Data Cache (ver fetchFromSheets) para no saturar el endpoint.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // ─── Pipeline stage order ─────────────────────────────────────────────────────
 
 const STAGE_ORDER: PipelineStage[] = [
@@ -287,7 +297,7 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
   if (!gasUrl) return null;
 
   try {
-    const obRes = await fetch(gasUrl, { next: { revalidate: 60 } });
+    const obRes = await fetch(gasUrl, { next: { revalidate: 60, tags: ['gas-cases'] } }); // AER-215: tag para revalidateTag() on-demand
     if (!obRes.ok) {
       console.error('[cases] GAS endpoint failed:', obRes.status, await obRes.text());
       return null;
@@ -424,9 +434,16 @@ export async function GET() {
     void loadPreviousState().then(prev => diffAndTrack(prev, cases)).catch(() => {});
     void saveState(cases).catch(() => {});
 
-    return NextResponse.json({ cases, source });
+    // AER-215: no-store explícito — defensa adicional independiente de force-dynamic
+    return NextResponse.json(
+      { cases, source },
+      { headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' } }
+    );
   } catch (err) {
     console.error('[cases] Route error:', err);
-    return NextResponse.json({ cases: FALLBACK_CASES, source: 'fallback' });
+    return NextResponse.json(
+      { cases: FALLBACK_CASES, source: 'fallback' },
+      { headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' } }
+    );
   }
 }
