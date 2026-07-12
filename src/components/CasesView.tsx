@@ -5,6 +5,7 @@ import { Briefcase, TrendingUp } from 'lucide-react';
 import clsx from 'clsx';
 import { CaseTracker } from './CaseTracker';
 import { PipelineLeads } from './PipelineLeads';
+import { RadarPanel } from './RadarPanel'; // AER-224: sección aditiva, no toca los sub-tabs
 
 type CasesTab = 'mandatos' | 'pipeline';
 
@@ -13,6 +14,9 @@ export function CasesView() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* AER-224: Radar de Casos — siempre visible, independiente del sub-tab activo */}
+      <RadarPanel />
+
       {/* Sub-tab nav */}
       <div className="flex items-center gap-2">
         <button
