@@ -219,20 +219,44 @@ const ALL_CASES: AeroCaso[] = [
     pipeline: buildPipeline('Lead', { 'Lead': '2026-05-01' }),
   },
 
-  // 6. Luciana Ledesma — SV228 BCN→JED (Saudia) — bienvenida enviada, esperando datos
+  // 6. Luciana Ledesma — SV228+SV848 BCN→JED→BKK (Saudia, escala) — carta extrajudicial enviada
   {
-    id: 'AR-20260531-183056-971',
+    id: 'AR-20260630-164628-001',
     pasajero: 'Luciana Ledesma',
-    vuelo: 'SV228',
-    ruta: 'BCN → JED',
+    vuelo: 'SV228+SV848',
+    ruta: 'BCN → BKK (escala JED)',
     fecha: '2026-01-08',
     compensacion: 600,
     scoreLegal: 80,
-    estadoActual: 'Lead',
-    ultimaActualizacion: '2026-06-06',
+    estadoActual: 'Extrajudicial',
+    ultimaActualizacion: '2026-07-09',
     welcome_sent_date: '2026-06-01',
-    notaInterna: 'Elegible CE 261 art. 3.1.a (sale de BCN/UE pese a aerolínea no-UE) · ~4.900 km → 600€ si retraso llegada ≥4h / 300€ si 3–4h · Bienvenida enviada 01/06/2026 pidiendo circunstancias + DNI + boarding + ACEPTO · Sin respuesta (follow-up 06/06)',
-    pipeline: buildPipeline('Lead', { 'Lead': '2026-05-31' }),
+    notaInterna: 'Itinerario BCN→BKK vía escala JED (SV228+SV848) · CE 261 art. 3.1.a + 7.1.c → 600€ · Carta extrajudicial enviada 09/07/2026 (tracking RF337378862ES) · Plazo respuesta: 08/08/2026',
+    pipeline: buildPipeline('Extrajudicial', {
+      'Lead':          '2026-05-31',
+      'Aprobado':      '2026-06-01',
+      'Extrajudicial': '2026-07-09',
+    }),
+  },
+
+  // 6b. Camila Salamone — SV228+SV848 BCN→JED→BKK (mismo itinerario que Luciana) — carta extrajudicial enviada
+  {
+    id: 'AR-20260630-164628-002',
+    pasajero: 'Camila Salamone',
+    vuelo: 'SV228+SV848',
+    ruta: 'BCN → BKK (escala JED)',
+    fecha: '2026-01-08',
+    compensacion: 600,
+    scoreLegal: 80,
+    estadoActual: 'Extrajudicial',
+    ultimaActualizacion: '2026-07-09',
+    welcome_sent_date: '2026-06-01',
+    notaInterna: 'Itinerario BCN→BKK vía escala JED (SV228+SV848), mismo vuelo que Luciana Ledesma · CE 261 art. 3.1.a + 7.1.c → 600€ · Carta extrajudicial enviada 09/07/2026 (tracking RF337378862ES) · Plazo respuesta: 08/08/2026',
+    pipeline: buildPipeline('Extrajudicial', {
+      'Lead':          '2026-05-31',
+      'Aprobado':      '2026-06-01',
+      'Extrajudicial': '2026-07-09',
+    }),
   },
 
   // 7. Lucas Tébar — Rechazado (retraso 1h < umbral CE 261 de 3h)
