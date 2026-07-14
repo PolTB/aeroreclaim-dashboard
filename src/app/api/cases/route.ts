@@ -62,6 +62,13 @@ const STATUS_TO_STAGE: Record<string, PipelineStage> = {
   AESA: 'AESA', AESA_FILED: 'AESA', ESCALADA_AESA: 'AESA', AESA_PRESENTADA: 'AESA',
   COBRO: 'Cobro', COBRADO: 'Cobro', PAYMENT_RECEIVED: 'Cobro',
   CERRADO: 'Cerrado', CLOSED: 'Cerrado',
+  // AER-247: literales reales de Extrajudicial_Queue/AESA_Queue/Collection_Queue
+  // que indican progreso MÁS ALLÁ del "floor stage" de su propia hoja (ver
+  // parseQueueRows). El resto de literales de esas colas (PENDIENTE_ENVIO,
+  // ESPERANDO_RESPUESTA, DOSSIER_EN_PREPARACION, PENDIENTE_COBRO, etc.) no
+  // necesitan entrada aquí — ya caen correctamente en el floor stage de su hoja.
+  ACEPTADA: 'Respuesta Aerolínea', RECHAZADA: 'Respuesta Aerolínea', OFERTA_PARCIAL: 'Respuesta Aerolínea',
+  COMISION_COBRADA: 'Cerrado',
 };
 
 function resolveActiveStage(rawStatus: string): PipelineStage | null {
@@ -293,13 +300,19 @@ const FALLBACK_CASES = ALL_CASES.filter(c => !isTestCase(c.pasajero));
 //   2. Cases in both → take the more advanced pipeline state.
 //      (e.g. Alicia: Sheet says Extrajudicial, hardcoded says AESA → use AESA)
 
+// AER-247: comparador "más avanzado gana" — primitivo compartido entre
+// mergeCasesWithFallback (hardcode manual vs GAS, ya existía) y
+// mergeQueueProgress (colas de estado real vs baseline, nuevo). Extraído
+// para no duplicar la comparación STAGE_ORDER.indexOf en dos sitios.
+function isMoreAdvanced(stage: PipelineStage, than: PipelineStage): boolean {
+  return STAGE_ORDER.indexOf(stage) > STAGE_ORDER.indexOf(than);
+}
+
 function mergeCasesWithFallback(gasCases: AeroCaso[]): AeroCaso[] {
   const result: AeroCaso[] = gasCases.map(gc => {
     const hc = FALLBACK_CASES.find(h => h.id === gc.id);
     if (!hc) return gc;
-    const gasIdx = STAGE_ORDER.indexOf(gc.estadoActual);
-    const hcIdx  = STAGE_ORDER.indexOf(hc.estadoActual);
-    if (hcIdx > gasIdx) {
+    if (isMoreAdvanced(hc.estadoActual, gc.estadoActual)) {
       return { ...gc, estadoActual: hc.estadoActual, pipeline: hc.pipeline, notaInterna: hc.notaInterna, ultimaActualizacion: hc.ultimaActualizacion };
     }
     return gc;
@@ -312,6 +325,111 @@ function mergeCasesWithFallback(gasCases: AeroCaso[]): AeroCaso[] {
   }
 
   return result;
+}
+
+// ─── AER-247: layering de progreso real (Extrajudicial/AESA/Collection) ──────
+// Cada cola es aguas abajo de Onboarding_Queue: si un case_id aparece ahí,
+// el caso avanzó más allá del onboarding. Se toma, por case_id, el
+// estadoActual MÁS AVANZADO entre el baseline y cada cola — mismo patrón
+// que mergeCasesWithFallback pero con datos de Sheets en vivo en vez de
+// hardcode. Se ejecuta ANTES de mergeCasesWithFallback (que sigue siendo
+// la última red de seguridad para casos 100% manuales — regla 4, no tocada).
+//
+// Además de estadoActual, se trae vuelo/ruta/compensacion de la cola más
+// avanzada cuando estén disponibles y no vacíos — así el caso queda correcto
+// (ej. Luciana/Camila: BCN→BKK, 600€) aunque Onboarding_Queue todavía tenga
+// los datos antiguos, sin depender de que esa hoja también se corrija.
+
+interface QueueProgress {
+  caseId: string;
+  stage: PipelineStage;
+  date?: string;
+  vuelo?: string;
+  ruta?: string;
+  compensacion?: number;
+}
+
+/**
+ * Parsea una hoja-cola (Extrajudicial_Queue/AESA_Queue/Collection_Queue) en
+ * formato {values:[[headers...],[row...]]}. Si el status de la fila no
+ * resuelve a un stage conocido (STATUS_TO_STAGE), se usa `floorStage` — el
+ * simple hecho de aparecer en esa hoja ya implica haber llegado a esa etapa,
+ * aunque el status concreto no esté explícitamente mapeado.
+ */
+function parseQueueRows(
+  rawRows: string[][] | undefined,
+  floorStage: PipelineStage,
+  dateColumnCandidates: string[],
+): QueueProgress[] {
+  const rows = rawRows ?? [];
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(h => (h ?? '').trim().toLowerCase());
+  const col = (name: string) => headers.indexOf(name.toLowerCase());
+
+  const colCaseId = col('case_id');
+  if (colCaseId < 0) return []; // esquema inesperado — no romper el resto del merge
+
+  const colStatus = col('status');
+  const colFlight  = col('flight_number');
+  const colOrigin  = col('origin_iata');
+  const colDest    = col('destination_iata');
+  const colComp    = col('compensation_eur');
+  const dateCol = dateColumnCandidates.map(col).find(c => c >= 0) ?? -1;
+
+  const result: QueueProgress[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const get = (c: number): string => (c >= 0 && c < row.length ? String(row[c] ?? '').trim() : '');
+
+    const caseId = get(colCaseId);
+    if (!caseId) continue;
+
+    const statusRaw = colStatus >= 0 ? get(colStatus) : '';
+    const stage = (statusRaw && resolveActiveStage(statusRaw)) || floorStage;
+    const date  = dateCol >= 0 ? (normalizeDate(get(dateCol)) ?? undefined) : undefined;
+
+    const vuelo = colFlight >= 0 ? (get(colFlight) || undefined) : undefined;
+    const origin = colOrigin >= 0 ? get(colOrigin) : '';
+    const dest   = colDest   >= 0 ? get(colDest)   : '';
+    const ruta   = (origin && dest) ? `${origin} → ${dest}` : undefined;
+    const compRaw = colComp >= 0 ? get(colComp) : '';
+    const compensacion = compRaw ? (parseInt(compRaw, 10) || undefined) : undefined;
+
+    result.push({ caseId, stage, date, vuelo, ruta, compensacion });
+  }
+  return result;
+}
+
+/** Aplica una lista de QueueProgress sobre el baseline, conservando siempre el estado más avanzado. */
+function mergeQueueProgress(baseCases: AeroCaso[], progress: QueueProgress[]): AeroCaso[] {
+  const byId = new Map(baseCases.map(c => [c.id, c]));
+
+  for (const p of progress) {
+    const existing = byId.get(p.caseId);
+    if (!existing) continue; // caso no visto en Onboarding_Queue — sin base sobre la que aplicar el layer
+
+    if (isMoreAdvanced(p.stage, existing.estadoActual)) {
+      const leadDate     = existing.pipeline['Lead']?.fecha ?? undefined;
+      const aprobadoDate = existing.pipeline['Aprobado']?.fecha ?? undefined;
+
+      byId.set(p.caseId, {
+        ...existing,
+        estadoActual:        p.stage,
+        vuelo:               p.vuelo ?? existing.vuelo,
+        ruta:                p.ruta ?? existing.ruta,
+        compensacion:        p.compensacion ?? existing.compensacion,
+        ultimaActualizacion: p.date ?? existing.ultimaActualizacion,
+        pipeline: buildPipelineFromStage(p.stage, {
+          'Lead':     leadDate ?? undefined,
+          'Aprobado': aprobadoDate ?? undefined,
+          [p.stage]:  p.date,
+        }),
+      });
+    }
+  }
+
+  return Array.from(byId.values());
 }
 
 // ─── GAS endpoint reader (dynamic — all cases from Google Sheet) ──────────────
@@ -335,7 +453,10 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
       return null;
     }
 
-    const rows: string[][] = obData.values ?? [];
+    // AER-247: CasesEndpoint.gs ahora devuelve {onboarding:{values},...} —
+    // se prioriza el formato nuevo, con fallback al plano (obData.values)
+    // por si el GAS Web App todavía no se ha redesplegado.
+    const rows: string[][] = obData.onboarding?.values ?? obData.values ?? [];
     if (rows.length < 2) return null;
 
     const headers = rows[0].map((h: string) => h.trim().toLowerCase());
@@ -390,8 +511,26 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
 
     if (cases.length === 0) return null;
 
-    // Supplement GAS data with hardcoded manual cases + advance stale states
-    return mergeCasesWithFallback(cases);
+    // AER-247: layer del progreso real de las 3 colas aguas abajo, en orden.
+    // Si CasesEndpoint.gs todavía no se ha redesplegado, obData.extrajudicial
+    // etc. serán undefined y parseQueueRows devuelve [] sin romper nada.
+    let progressedCases = cases;
+    progressedCases = mergeQueueProgress(
+      progressedCases,
+      parseQueueRows(obData.extrajudicial?.values, 'Extrajudicial', ['claim_sent_date', 'created_at']),
+    );
+    progressedCases = mergeQueueProgress(
+      progressedCases,
+      parseQueueRows(obData.aesa?.values, 'AESA', ['aesa_submission_date', 'created_at']),
+    );
+    progressedCases = mergeQueueProgress(
+      progressedCases,
+      parseQueueRows(obData.collection?.values, 'Cobro', ['resolution_date', 'created_at']),
+    );
+
+    // Supplement with hardcoded manual cases + advance stale states
+    // (rol de red de seguridad sin cambios — regla 4, AER-247)
+    return mergeCasesWithFallback(progressedCases);
 
   } catch (err) {
     console.error('[cases] GAS fetch failed:', err);
