@@ -71,6 +71,56 @@ function parseEntries(blocks: { type: string; paragraph?: { rich_text: { plain_t
   return entries;
 }
 
+// ─── AER-244: parser de fecha robusto ──────────────────────────────────────
+// new Date(str) nativo no es fiable para el texto libre que llega del campo
+// "date" ("13-may-2026 (CEO)", "20/06/2026", "11/06/2026"): a veces interpreta
+// MM/DD en vez de DD/MM, y siempre devuelve Invalid Date con meses en español.
+// Antes: cualquier fallo de parseo (isNaN) se trataba como ACTIVA para siempre
+// — de ahí que decenas de entradas resueltas hace semanas nunca archivaran.
+// Ahora: se prueban varios formatos conocidos (ISO, DD/MM/YYYY, DD-MMM-YYYY
+// con mes en español). Si ninguno matchea, se mantiene el MISMO fallback
+// seguro de antes (tratar como activa) — comportamiento no regresivo.
+const MESES_ES: Record<string, number> = {
+  ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+  jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
+};
+
+function parseEntryDate(raw: string): Date | null {
+  const s = raw.trim();
+
+  // ISO: YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // DD-MMM-YYYY o "DD mmm YYYY" con mes abreviado en español (ene..dic),
+  // admite sufijos como "13-may-2026 (CEO)" porque no anclamos el final.
+  m = s.match(/^(\d{1,2})[-\s]([a-záéíóúA-ZÁÉÍÓÚ]{3})[a-záéíóúA-ZÁÉÍÓÚ]*[-\s](\d{4})/);
+  if (m) {
+    const mesKey = m[2].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').slice(0, 3);
+    const mesIdx = MESES_ES[mesKey];
+    if (mesIdx !== undefined) {
+      const d = new Date(Number(m[3]), mesIdx, Number(m[1]));
+      return isNaN(d.getTime()) ? null : d;
+    }
+  }
+
+  // DD/MM/YYYY o DD-MM-YYYY numérico (convención española: día primero)
+  m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      const d = new Date(Number(m[3]), month - 1, day);
+      return isNaN(d.getTime()) ? null : d;
+    }
+  }
+
+  return null; // fallback seguro: mismo comportamiento que antes (tratar como activa)
+}
+
 export function BandejaPol() {
   const [entries, setEntries] = useState<BandejaEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,8 +175,8 @@ export function BandejaPol() {
   }
 
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const active = entries.filter((e) => { const d = new Date(e.date); return isNaN(d.getTime()) || d >= cutoff; });
-  const archived = entries.filter((e) => { const d = new Date(e.date); return !isNaN(d.getTime()) && d < cutoff; });
+  const active = entries.filter((e) => { const d = parseEntryDate(e.date); return d === null || d >= cutoff; });
+  const archived = entries.filter((e) => { const d = parseEntryDate(e.date); return d !== null && d < cutoff; });
 
   return (
     <div className="space-y-5">
