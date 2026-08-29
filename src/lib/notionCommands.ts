@@ -1,5 +1,6 @@
 import { Client } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
+import { normalizeCommandEstado } from '@/types';
 import type { NotionCommand, CommandDestinatario, CommandEstado, CommandPrioridad, CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload, UpdateCommandPayload, CommandArchivo } from '@/types';
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
@@ -41,7 +42,8 @@ function parseNotionCommand(page: PageObjectResponse): NotionCommand {
     destinatario: getSelect(props, 'Destinatario') as CommandDestinatario | null,
     subchat: getRichText(props, 'Subchat'),
     prompt: getRichText(props, 'Prompt'),
-    estado: (getSelect(props, 'Estado') ?? 'Pendiente') as CommandEstado,
+    // Normaliza 'Completada'/'Cancelada' → forma canónica (ver types/index.ts)
+    estado: normalizeCommandEstado(getSelect(props, 'Estado')),
     respuesta: getRichText(props, 'Respuesta'),
     prioridad: getSelect(props, 'Prioridad') as CommandPrioridad | null,
     modelo: getSelect(props, 'Modelo') as CommandModelo | null,

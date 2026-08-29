@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Terminal, Plus, Copy, Clock, AlertCircle, ChevronDown, ChevronRight,
-  RefreshCw, Loader2, Check, History, AlertTriangle,
+  Loader2, Check, History, AlertTriangle, Search,
   Inbox, Ban, X, Trash2, Paperclip, ExternalLink, Image as ImageIcon,
   FolderOpen, Send,
 } from 'lucide-react';
@@ -16,7 +16,7 @@ import type {
   CommandArchivoTipo, CommandModelo, CommandEsfuerzo, CreateCommandPayload, CommandArchivo,
 } from '@/types';
 import {
-  COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG, COMMAND_ESTADO_ORDER,
+  COMMAND_DESTINATARIOS, COMMAND_ESTADO_CONFIG,
   ACTIVE_ESTADOS, ARCHIVED_ESTADOS,
 } from '@/types';
 
@@ -810,81 +810,70 @@ function CreateCommandModal({ onClose, onCreated }: { onClose: () => void; onCre
   );
 }
 
-// ─── Setup Banner ──────────────────────────────────────────────────────────────
 
-function SetupBanner() {
+// ─── Main CommandCenter ─────────────────────────────────────────────────────────
+// Los datos llegan por props desde el Dashboard (una sola lectura de Notion
+// compartida por las tres pestañas, un solo "actualizado hace X"). Aquí sólo
+// quedan las mutaciones, que siguen yendo directas a la API.
+
+interface CommandCenterProps {
+  commands: NotionCommand[];
+  loading: boolean;
+  error?: string;
+  onRefresh: () => void;
+  onPatch: (id: string, updates: Partial<NotionCommand>) => void;
+  onRemove: (id: string) => void;
+}
+
+/** Cuántas delegaciones del historial se pintan antes de pedir "ver más". */
+const HISTORIAL_PAGINA = 20;
+
+function Seccion({ titulo, ayuda, tono, children }: {
+  titulo: string; ayuda: string; tono: 'revisar' | 'marcha'; children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-warn/30 bg-warn/5 p-5 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <AlertCircle size={16} className="text-warn" />
-        <h3 className="text-sm font-semibold text-ink">Setup requerido: Base de datos de Delegaciones</h3>
+    <section className="flex flex-col gap-2">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <h3 className={clsx(
+          'text-xs font-semibold',
+          tono === 'revisar' ? 'text-warn' : 'text-ink-secondary',
+        )}>
+          {titulo}
+        </h3>
+        <span className="text-[11px] text-ink-muted">{ayuda}</span>
       </div>
-      <p className="text-xs text-ink-muted leading-relaxed">
-        La variable{' '}
-        <code className="bg-surface-elevated px-1 py-0.5 rounded text-accent font-mono">
-          COMMANDS_DATABASE_ID
-        </code>{' '}
-        no está configurada en Vercel.
-      </p>
-    </div>
+      <div className="flex flex-col gap-2">{children}</div>
+    </section>
   );
 }
 
-// ─── Main CommandCenter ─────────────────────────────────────────────────────────
-
-export function CommandCenter() {
-  const [commands, setCommands] = useState<NotionCommand[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+export function CommandCenter({ commands, loading, error, onRefresh, onPatch, onRemove }: CommandCenterProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<NotionCommand | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [visiblesHistorial, setVisiblesHistorial] = useState(HISTORIAL_PAGINA);
   const [copiedToast, setCopiedToast] = useState(false);
 
-  const fetchCommands = useCallback(async (silent = false) => {
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/notion/commands');
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.needsSetup) { setNeedsSetup(true); return; }
-        throw new Error(data.error ?? 'Error cargando delegaciones');
-      }
-      setCommands(data.commands);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchCommands(); }, [fetchCommands]);
-
   const updateCommand = useCallback(async (id: string, updates: Partial<NotionCommand>) => {
-    setCommands(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-    setSelectedCommand(prev => prev?.id === id ? { ...prev, ...updates } : prev);
+    onPatch(id, updates);
+    setSelectedCommand(prev => (prev?.id === id ? { ...prev, ...updates } : prev));
     const res = await fetch(`/api/notion/commands/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     });
     if (!res.ok) {
-      fetchCommands(true);
+      onRefresh();
       throw new Error('Error al actualizar');
     }
-  }, [fetchCommands]);
+  }, [onPatch, onRefresh]);
 
   const deleteCommand = useCallback(async (id: string) => {
-    setCommands(prev => prev.filter(c => c.id !== id));
+    onRemove(id);
     setSelectedCommand(null);
     const res = await fetch(`/api/notion/commands/${id}`, { method: 'DELETE' });
-    if (!res.ok) fetchCommands(true);
-  }, [fetchCommands]);
+    if (!res.ok) onRefresh();
+  }, [onRemove, onRefresh]);
 
   function handleCopyPrompt(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
@@ -892,21 +881,24 @@ export function CommandCenter() {
     setTimeout(() => setCopiedToast(false), 2500);
   }
 
-  const activeCommands = commands.filter(c => ACTIVE_ESTADOS.includes(c.estado));
-  const historyCommands = commands.filter(c => ARCHIVED_ESTADOS.includes(c.estado));
-  const sortedActive = [...activeCommands].sort((a, b) =>
-    COMMAND_ESTADO_ORDER[a.estado] - COMMAND_ESTADO_ORDER[b.estado],
-  );
+  const q = busqueda.trim().toLowerCase();
+  const coincide = useCallback((c: NotionCommand) => {
+    if (!q) return true;
+    return [c.titulo, c.prompt, c.respuesta, c.destinatario ?? '', c.subchat]
+      .some(campo => campo.toLowerCase().includes(q));
+  }, [q]);
 
-  const counts = activeCommands.reduce((acc, c) => {
-    acc[c.estado] = (acc[c.estado] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const activas = commands.filter(c => ACTIVE_ESTADOS.includes(c.estado)).filter(coincide);
+  const paraRevisar = activas.filter(c => c.estado === 'Respuesta Recibida' || c.estado === 'Bloqueado');
+  const enMarcha = activas.filter(c => c.estado === 'Pendiente' || c.estado === 'En Proceso');
+  const historial = commands.filter(c => ARCHIVED_ESTADOS.includes(c.estado)).filter(coincide);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 size={20} className="animate-spin text-accent" />
+      <div className="flex flex-col gap-2">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="h-14 bg-surface-card border border-edge/70 rounded-xl animate-pulse-soft" />
+        ))}
       </div>
     );
   }
@@ -914,117 +906,107 @@ export function CommandCenter() {
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Terminal size={15} className="text-accent" />
             Delegaciones
           </h2>
-          <div className="flex items-center gap-3 mt-1">
-            {Object.entries(counts).map(([estado, count]) => {
-              const cfg = COMMAND_ESTADO_CONFIG[estado as CommandEstado];
-              if (!cfg) return null;
-              return (
-                <span key={estado} className="text-[10px] flex items-center gap-1" style={{ color: cfg.color }}>
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
-                  {count} {cfg.label.toLowerCase()}
-                </span>
-              );
-            })}
-          </div>
+          <p className="text-xs text-ink-muted mt-1">
+            {activas.length === 0
+              ? `Ninguna en curso · ${historial.length} en el historial`
+              : `${activas.length} en curso${paraRevisar.length ? ` · ${paraRevisar.length} esperando que las revises` : ''}`}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchCommands(true)}
-            disabled={refreshing}
-            className="p-2 rounded-lg text-ink-muted hover:text-ink-secondary hover:bg-surface-card border border-transparent hover:border-edge/40 transition-all"
-          >
-            <RefreshCw size={13} className={clsx(refreshing && 'animate-spin text-accent')} />
-          </button>
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-xl transition-colors shadow-sm"
-          >
-            <Plus size={12} />
-            Nueva Delegación
-          </button>
-        </div>
+        <button
+          onClick={() => setIsCreateOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-xl shadow-sm"
+        >
+          <Plus size={12} />
+          Nueva delegación
+        </button>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 p-3 bg-red-500/8 border border-red-500/20 rounded-xl text-xs text-red-400">
+        <div className="flex items-start gap-2 p-3 bg-danger/10 border border-danger/25 rounded-xl text-xs text-danger">
           <AlertCircle size={13} className="mt-0.5 shrink-0" />
           <div>
             <p className="font-medium">Error cargando delegaciones</p>
-            <p className="mt-0.5 text-red-400/70">{error}</p>
-            <button onClick={() => fetchCommands()} className="mt-1.5 underline underline-offset-2">
-              Reintentar
-            </button>
+            <p className="mt-0.5 opacity-80">{error}</p>
+            <button onClick={onRefresh} className="mt-1.5 underline underline-offset-2">Reintentar</button>
           </div>
         </div>
       )}
 
-      {needsSetup && <SetupBanner />}
+      {/* Buscador — el historial de casi 400 delegaciones sólo sirve si se puede buscar */}
+      <div className="relative">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+        <input
+          value={busqueda}
+          onChange={e => { setBusqueda(e.target.value); setVisiblesHistorial(HISTORIAL_PAGINA); }}
+          placeholder="Buscar en todas las delegaciones (título, prompt, respuesta, agente)…"
+          className="w-full bg-surface-card border border-edge/70 rounded-xl pl-9 pr-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-accent/60"
+        />
+      </div>
 
-      {!needsSetup && (
-        <>
-          <div className="flex flex-col gap-2">
-            {sortedActive.length === 0 ? (
-              <div className="text-center py-12 text-ink-muted">
-                <Terminal size={24} className="mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">No hay delegaciones activas</p>
-                <p className="text-xs mt-1 text-ink-faint">Crea una nueva delegación para empezar</p>
-              </div>
-            ) : (
-              sortedActive.map(cmd => (
-                <CommandCard
-                  key={cmd.id}
-                  command={cmd}
-                  onClick={() => setSelectedCommand(cmd)}
-                />
-              ))
-            )}
+      {paraRevisar.length > 0 && (
+        <Seccion titulo="Para revisar" ayuda="el agente ya respondió o se ha bloqueado" tono="revisar">
+          {paraRevisar.map(cmd => (
+            <CommandCard key={cmd.id} command={cmd} onClick={() => setSelectedCommand(cmd)} />
+          ))}
+        </Seccion>
+      )}
+
+      {enMarcha.length > 0 && (
+        <Seccion titulo="En marcha" ayuda="enviadas al agente, sin respuesta todavía" tono="marcha">
+          {enMarcha.map(cmd => (
+            <CommandCard key={cmd.id} command={cmd} onClick={() => setSelectedCommand(cmd)} />
+          ))}
+        </Seccion>
+      )}
+
+      {activas.length === 0 && !q && (
+        <div className="text-center py-10 bg-surface-card border border-edge/60 rounded-2xl">
+          <Terminal size={22} className="mx-auto mb-3 text-ink-faint" />
+          <p className="text-sm font-medium text-ink-secondary">Ninguna delegación en curso</p>
+          <p className="text-xs mt-1 text-ink-muted">Todo lo delegado está cerrado. El historial sigue ahí abajo.</p>
+        </div>
+      )}
+
+      {/* Historial */}
+      {historial.length > 0 && (
+        <div className="border-t border-edge/60 pt-4 flex flex-col gap-2">
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-xs font-semibold text-ink-secondary flex items-center gap-1.5">
+              <History size={12} />
+              {q ? 'Historial que coincide' : 'Historial'}
+            </h3>
+            <span className="text-[11px] text-ink-muted">{historial.length} cerradas</span>
           </div>
-
-          {historyCommands.length > 0 && (
-            <div className="border-t border-edge/30 pt-4">
-              <button
-                onClick={() => setShowHistory(v => !v)}
-                className="flex items-center gap-2 text-xs text-ink-muted hover:text-ink-secondary transition-colors"
-              >
-                <History size={13} />
-                <span>Historial ({historyCommands.length})</span>
-                <ChevronDown size={12} className={clsx('transition-transform', showHistory && 'rotate-180')} />
-              </button>
-              <AnimatePresence>
-                {showHistory && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden mt-3 flex flex-col gap-2"
-                  >
-                    {historyCommands.map(cmd => (
-                      <CommandCard
-                        key={cmd.id}
-                        command={cmd}
-                        onClick={() => setSelectedCommand(cmd)}
-                      />
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+          {historial.slice(0, visiblesHistorial).map(cmd => (
+            <CommandCard key={cmd.id} command={cmd} onClick={() => setSelectedCommand(cmd)} />
+          ))}
+          {historial.length > visiblesHistorial && (
+            <button
+              onClick={() => setVisiblesHistorial(v => v + HISTORIAL_PAGINA * 2)}
+              className="self-center mt-1 flex items-center gap-1.5 px-3 py-1.5 text-xs text-ink-muted hover:text-ink-secondary border border-edge/70 rounded-lg"
+            >
+              <ChevronDown size={12} />
+              Ver más ({historial.length - visiblesHistorial} restantes)
+            </button>
           )}
-        </>
+        </div>
+      )}
+
+      {q && activas.length === 0 && historial.length === 0 && (
+        <p className="text-sm text-ink-muted text-center py-10">Ninguna delegación coincide con «{busqueda}».</p>
       )}
 
       {/* Create modal */}
       {isCreateOpen && (
         <CreateCommandModal
           onClose={() => setIsCreateOpen(false)}
-          onCreated={() => { setIsCreateOpen(false); fetchCommands(true); }}
+          onCreated={() => { setIsCreateOpen(false); onRefresh(); }}
         />
       )}
 
@@ -1048,7 +1030,7 @@ export function CommandCenter() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-success/20 border border-success/30 text-success text-xs font-medium rounded-full backdrop-blur-sm shadow-lg z-50"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-success/20 border border-success/30 text-success text-xs font-medium rounded-full backdrop-blur-sm shadow-lift z-50"
           >
             <Check size={12} />
             Prompt copiado al portapapeles
@@ -1058,3 +1040,5 @@ export function CommandCenter() {
     </div>
   );
 }
+
+export default CommandCenter;

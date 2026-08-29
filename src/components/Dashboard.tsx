@@ -1,394 +1,204 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  LayoutGrid, Terminal, RefreshCw, Plus,
-  AlertCircle, Loader2, ChevronRight, Sun, Moon, Briefcase, Map, BookOpen, Inbox,
-  Compass, Users, Activity,
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Briefcase, Terminal, Inbox, RefreshCw, Sun, Moon, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { NotionTask, Filters, UpdateTaskPayload } from '@/types';
-import { KanbanBoard } from './KanbanBoard';
-import { MetricsPanel } from './MetricsPanel';
-import { FilterBar } from './FilterBar';
-import { CreateTaskModal } from './CreateTaskModal';
+import { useDashboardData } from '@/lib/useDashboardData';
+import { CasosPanel } from './CasosPanel';
 import { CommandCenter } from './CommandCenter';
-import { QuickInbox } from './QuickInbox';
-import { CasesView } from './CasesView';
-import { RoadmapTimeline } from './RoadmapTimeline';
-import { PhaseBacklog } from './PhaseBacklog';
-import { ProximasTareas } from './ProximasTareas';
-import { BlogCalendar } from './BlogCalendar';
-import { BandejaPol } from './BandejaPol';
-import { NortePanel } from './NortePanel';
-import { AgentesPanel } from './AgentesPanel';
-import { HealthPanel } from './HealthPanel';
-import type { Phase } from './RoadmapTimeline';
+import { BandejaPanel } from './BandejaPanel';
+import { ResumenHoy, construirSenales, type Vista } from './ResumenHoy';
 
-type ViewMode = 'kanban' | 'commands' | 'cases' | 'norte' | 'roadmap' | 'agentes' | 'blog' | 'bandeja' | 'health';
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+// Tres pestañas, y sólo tres: Casos (el dinero), Delegaciones (el trabajo
+// delegado) y Bandeja (lo que sólo puede hacer Pol). Las otras seis del
+// refactor de mayo —Kanban, Norte, Roadmap, Agentes, Blog y Health— se
+// retiraron el 29/08/2026 porque no se usaban: mostraban estado de sistemas,
+// no decisiones. Siguen en el historial de git si alguna vuelve a hacer falta.
 
-const NAV_ITEMS: { id: ViewMode; label: string; icon: React.ReactNode; shortLabel: string }[] = [
-  { id: 'kanban',    label: 'Kanban',       shortLabel: 'Kanban',  icon: <LayoutGrid size={13} /> },
-  { id: 'commands',  label: 'Delegaciones', shortLabel: 'Deleg',   icon: <Terminal size={13} /> },
-  { id: 'cases',     label: 'Casos',        shortLabel: 'Casos',   icon: <Briefcase size={13} /> },
-  { id: 'norte',     label: 'Norte',        shortLabel: 'Norte',   icon: <Compass size={13} /> },
-  { id: 'roadmap',   label: 'Roadmap',      shortLabel: 'Road',    icon: <Map size={13} /> },
-  { id: 'agentes',   label: 'Agentes',      shortLabel: 'Agentes', icon: <Users size={13} /> },
-  { id: 'blog',      label: 'Blog',         shortLabel: 'Blog',    icon: <BookOpen size={13} /> },
-  { id: 'bandeja',   label: 'Bandeja',      shortLabel: 'Bandeja', icon: <Inbox size={13} /> },
-  { id: 'health',    label: 'Health',       shortLabel: 'Health',  icon: <Activity size={13} /> },
+const PESTAÑAS: { id: Vista; label: string; icono: React.ReactNode }[] = [
+  { id: 'casos',        label: 'Casos',        icono: <Briefcase size={13} /> },
+  { id: 'delegaciones', label: 'Delegaciones', icono: <Terminal size={13} /> },
+  { id: 'bandeja',      label: 'Bandeja',      icono: <Inbox size={13} /> },
 ];
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
-
 export function Dashboard() {
-  const [tasks, setTasks] = useState<NotionTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasEstado, setHasEstado] = useState(true);
-  const [view, setView] = useState<ViewMode>('kanban');
-  const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const data = useDashboardData();
+  const [vista, setVista] = useState<Vista>('casos');
   const [isDark, setIsDark] = useState(true);
-  const [filters, setFilters] = useState<Filters>({
-    prioridad: 'all',
-    categoria: 'all',
-    estado: 'all',
-    search: '',
-  });
 
-  // Theme management
+  // Tema: se recuerda entre sesiones. Por defecto, oscuro.
   useEffect(() => {
     const stored = localStorage.getItem('theme');
-    if (stored === 'light') {
-      setIsDark(false);
-      document.documentElement.classList.remove('dark');
-    } else {
-      setIsDark(true);
-      document.documentElement.classList.add('dark');
-    }
+    const dark = stored !== 'light';
+    setIsDark(dark);
+    document.documentElement.classList.toggle('dark', dark);
   }, []);
+
+  // La pestaña abierta también se recuerda: si Pol vive en Delegaciones, que
+  // el dashboard abra en Delegaciones.
+  useEffect(() => {
+    const stored = localStorage.getItem('vista') as Vista | null;
+    if (stored && PESTAÑAS.some((p) => p.id === stored)) setVista(stored);
+  }, []);
+
+  function cambiarVista(v: Vista) {
+    setVista(v);
+    try { localStorage.setItem('vista', v); } catch { /* almacenamiento no disponible */ }
+  }
 
   function toggleTheme() {
     const next = !isDark;
     setIsDark(next);
-    if (next) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
+    document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('theme', next ? 'dark' : 'light');
   }
 
-  // Data fetching
-  const fetchTasks = useCallback(async (silent = false) => {
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/notion/tasks');
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? `HTTP ${res.status}`);
-      }
-      const data: { tasks: NotionTask[]; hasEstado: boolean } = await res.json();
-      setTasks(data.tasks);
-      setHasEstado(data.hasEstado);
-      setLastRefresh(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar tareas');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTasks();
-    const interval = setInterval(() => fetchTasks(true), 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchTasks]);
-
-  const updateTask = useCallback(
-    async (id: string, updates: UpdateTaskPayload) => {
-      setTasks((prev) => prev.map((t) => (t.id === id ? ({ ...t, ...updates } as NotionTask) : t)));
-      try {
-        const res = await fetch(`/api/notion/tasks/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? 'Failed to update task');
-        }
-      } catch {
-        fetchTasks(true);
-      }
-    },
-    [fetchTasks],
-  );
-
-  const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      if (filters.prioridad !== 'all' && task.prioridad !== filters.prioridad) return false;
-      if (filters.categoria !== 'all' && task.categoria !== filters.categoria) return false;
-      if (filters.estado !== 'all' && task.estado !== filters.estado) return false;
-      if (filters.search) {
-        const q = filters.search.toLowerCase();
-        if (
-          !task.tarea.toLowerCase().includes(q) &&
-          !task.notas.toLowerCase().includes(q) &&
-          !(task.categoria ?? '').toLowerCase().includes(q)
-        ) return false;
-      }
-      return true;
-    });
-  }, [tasks, filters]);
-
-  const categories = useMemo(
-    () => Array.from(new Set(tasks.map((t) => t.categoria).filter(Boolean) as string[])).sort(),
-    [tasks],
-  );
-
-  const showTaskViews = view === 'kanban';
-  const showFullWidth = view === 'commands' || view === 'cases' || view === 'norte' || view === 'roadmap' || view === 'agentes' || view === 'blog' || view === 'bandeja' || view === 'health';
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-surface">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">A</div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-surface rounded-full flex items-center justify-center">
-              <Loader2 size={10} className="animate-spin text-accent" />
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-medium text-ink-secondary">AeroReclaim Mission Control</p>
-            <p className="text-xs text-ink-muted mt-1">Cargando desde Notion...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const señales = construirSenales(data);
+  const contadorPestaña: Record<Vista, number> = {
+    casos: señales.filter((s) => s.destino === 'casos').length,
+    delegaciones: señales.filter((s) => s.destino === 'delegaciones').length,
+    bandeja: señales.filter((s) => s.destino === 'bandeja').length,
+  };
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Top navigation */}
-      <header className="sticky top-0 z-30 border-b border-edge/50 bg-surface/80 backdrop-blur-md">
-        <div className="max-w-screen-2xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between gap-3">
-          {/* Brand */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-glow">A</div>
-            <span className="text-sm font-semibold text-ink hidden sm:block">
-              AeroReclaim <span className="text-ink-muted font-normal">Mission Control</span>
-            </span>
+      {/* Cabecera */}
+      <header className="sticky top-0 z-30 border-b border-edge/60 bg-surface/85 backdrop-blur-md">
+        {/* En móvil la cabecera se parte en dos filas: con logo, tres pestañas
+            y dos botones en una sola línea de 375 px, la página se iba en
+            scroll horizontal. */}
+        <div className="max-w-screen-2xl mx-auto px-4 md:px-6 py-2 sm:py-0 sm:h-14 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+          <div className="flex items-center justify-between gap-2.5 sm:shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                A
+              </div>
+              <span className="text-sm font-semibold text-ink">AeroReclaim</span>
+            </div>
+            {/* En móvil las acciones viven aquí, junto al logo */}
+            <div className="flex items-center gap-1 sm:hidden">
+              <button
+                onClick={data.refresh}
+                disabled={data.refreshing || data.loading}
+                className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-card"
+                title="Actualizar ahora"
+              >
+                <RefreshCw size={14} className={clsx((data.refreshing || data.loading) && 'animate-spin text-accent')} />
+              </button>
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-card"
+                title={isDark ? 'Modo claro' : 'Modo oscuro'}
+              >
+                {isDark ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
+            </div>
           </div>
 
-          {/* Center: 4-tab navigation */}
-          <div className="flex bg-surface-card border border-edge/60 rounded-xl p-1 gap-0.5">
-            {NAV_ITEMS.map((item) => (
+          <nav className="flex bg-surface-card border border-edge/70 rounded-xl p-1 gap-0.5">
+            {PESTAÑAS.map((p) => (
               <button
-                key={item.id}
-                onClick={() => setView(item.id)}
+                key={p.id}
+                onClick={() => cambiarVista(p.id)}
                 className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  view === item.id ? 'bg-accent text-white shadow-sm' : 'text-ink-muted hover:text-ink-secondary',
+                  'relative flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-medium',
+                  vista === p.id
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-ink-muted hover:text-ink-secondary hover:bg-surface-hover',
                 )}
               >
-                {item.icon}
-                <span className="hidden sm:block">{item.label}</span>
-                <span className="sm:hidden">{item.shortLabel}</span>
+                {p.icono}
+                <span>{p.label}</span>
+                {contadorPestaña[p.id] > 0 && vista !== p.id && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-warn" title="Requiere atención" />
+                )}
               </button>
             ))}
-          </div>
+          </nav>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-2">
-            <span className="hidden lg:block text-[10px] text-ink-faint">
-              {formatDistanceToNow(lastRefresh, { locale: es, addSuffix: true })}
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+            <span className="hidden lg:block text-[10px] text-ink-muted">
+              {data.lastRefresh
+                ? `Actualizado ${formatDistanceToNow(data.lastRefresh, { locale: es, addSuffix: true })}`
+                : 'Cargando…'}
             </span>
             <button
+              onClick={data.refresh}
+              disabled={data.refreshing || data.loading}
+              className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-card border border-transparent hover:border-edge/60"
+              title="Actualizar ahora"
+            >
+              <RefreshCw size={14} className={clsx((data.refreshing || data.loading) && 'animate-spin text-accent')} />
+            </button>
+            <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg text-ink-muted hover:text-ink-secondary hover:bg-surface-card border border-transparent hover:border-edge/40 transition-all"
+              className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-card border border-transparent hover:border-edge/60"
               title={isDark ? 'Modo claro' : 'Modo oscuro'}
             >
               {isDark ? <Sun size={14} /> : <Moon size={14} />}
             </button>
-            {showTaskViews && (
-              <button
-                onClick={() => fetchTasks(true)}
-                disabled={refreshing}
-                className="p-2 rounded-lg text-ink-muted hover:text-ink-secondary hover:bg-surface-card border border-transparent hover:border-edge/40 transition-all"
-                title="Actualizar"
-              >
-                <RefreshCw size={14} className={clsx(refreshing && 'animate-spin text-accent')} />
-              </button>
-            )}
-            {showTaskViews && (
-              <button
-                onClick={() => setIsCreateOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-xl transition-colors shadow-sm"
-              >
-                <Plus size={13} />
-                <span className="hidden sm:block">Nueva tarea</span>
-              </button>
-            )}
           </div>
         </div>
       </header>
 
-      {/* Body */}
-      <div className="max-w-screen-2xl mx-auto px-4 md:px-6 py-5">
-        {/* Error banner */}
-        {error && showTaskViews && (
-          <div className="mb-5 flex items-start gap-2.5 p-3 bg-red-500/8 border border-red-500/20 rounded-xl text-sm text-red-400">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <div>
-              <p className="font-medium">Error cargando tareas</p>
-              <p className="text-xs mt-0.5 text-red-400/70">{error}</p>
-              <button onClick={() => fetchTasks()} className="text-xs mt-2 underline underline-offset-2 hover:no-underline">Reintentar</button>
-            </div>
+      <main className="max-w-screen-2xl mx-auto px-4 md:px-6 py-5 flex flex-col gap-5">
+        {/* Hoy */}
+        {data.loading ? (
+          <div className="flex items-center gap-2 text-xs text-ink-muted">
+            <Loader2 size={13} className="animate-spin text-accent" />
+            Leyendo Notion y el pipeline…
           </div>
+        ) : (
+          <ResumenHoy {...data} onIr={cambiarVista} />
         )}
 
-        {/* Full-width views */}
-        {showFullWidth && (
-          <AnimatePresence mode="wait">
-            {view === 'commands' && (
-              <motion.div key="commands" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <CommandCenter />
-              </motion.div>
+        {/* Contenido.
+            Sin AnimatePresence a propósito: con mode="wait" el panel saliente
+            se quedaba montado y la pestaña no cambiaba nunca. La animación de
+            entrada por sí sola basta y no puede bloquear la navegación. */}
+        <div>
+          <motion.div
+            key={vista}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            {vista === 'casos' && (
+              <CasosPanel
+                radar={data.radar}
+                sheetCases={data.sheetCases}
+                error={data.errors.radar}
+                loading={data.loading}
+              />
             )}
-            {view === 'cases' && (
-              <motion.div key="cases" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <CasesView />
-              </motion.div>
+            {vista === 'delegaciones' && (
+              <CommandCenter
+                commands={data.commands}
+                loading={data.loading}
+                error={data.errors.commands}
+                onRefresh={data.refresh}
+                onPatch={data.patchCommand}
+                onRemove={data.removeCommand}
+              />
             )}
-            {view === 'norte' && (
-              <motion.div key="norte" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <NortePanel />
-              </motion.div>
+            {vista === 'bandeja' && (
+              <BandejaPanel
+                entries={data.bandeja}
+                done={data.bandejaDone}
+                error={data.errors.bandeja}
+                loading={data.loading}
+                onMarkDone={data.markBandejaDone}
+              />
             )}
-            {view === 'roadmap' && (
-              <motion.div key="roadmap" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col gap-5">
-                <RoadmapTimeline onSelectPhase={setSelectedPhase} activePhaseId={selectedPhase?.id} />
-                <ProximasTareas tasks={tasks} />
-                <PhaseBacklog tasks={tasks} activePhase={selectedPhase} />
-              </motion.div>
-            )}
-            {view === 'agentes' && (
-              <motion.div key="agentes" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <AgentesPanel />
-              </motion.div>
-            )}
-            {view === 'blog' && (
-              <motion.div key="blog" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <BlogCalendar />
-              </motion.div>
-            )}
-            {view === 'bandeja' && (
-              <motion.div key="bandeja" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <BandejaPol />
-              </motion.div>
-            )}
-            {view === 'health' && (
-              <motion.div key="health" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <HealthPanel isDark={isDark} onToggle={toggleTheme} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        )}
-
-        {/* Kanban: sidebar + main */}
-        {showTaskViews && (
-          <div className="flex gap-5">
-            {/* Sidebar */}
-            <AnimatePresence initial={false}>
-              {showSidebar && (
-                <motion.aside
-                  key="sidebar"
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 256, opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  className="shrink-0 overflow-hidden hidden lg:block"
-                >
-                  <div className="w-64 flex flex-col gap-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Métricas</span>
-                      </div>
-                      <MetricsPanel tasks={tasks} />
-                    </div>
-                    <p className="text-[10px] text-ink-faint px-1">
-                      Estado de agentes → pestaña <span className="text-ink-muted font-medium">Agentes</span>
-                    </p>
-                  </div>
-                </motion.aside>
-              )}
-            </AnimatePresence>
-
-            {/* Sidebar toggle */}
-            <button
-              onClick={() => setShowSidebar((v) => !v)}
-              className="hidden lg:flex items-center justify-center w-5 self-start mt-7 text-ink-faint hover:text-ink-muted transition-colors"
-              title={showSidebar ? 'Ocultar sidebar' : 'Mostrar sidebar'}
-            >
-              <ChevronRight size={14} className={clsx('transition-transform', showSidebar && 'rotate-180')} />
-            </button>
-
-            {/* Main content */}
-            <main className="flex-1 min-w-0">
-              <QuickInbox onTaskCreated={() => fetchTasks(true)} />
-
-              {/* Filters */}
-              <div className="mb-4">
-                <FilterBar filters={filters} onFiltersChange={setFilters} categories={categories} />
-              </div>
-
-              {/* Result count */}
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-ink-muted">
-                  {filteredTasks.length === tasks.length ? (
-                    <><span className="font-medium text-ink-secondary">{tasks.length}</span> tareas</>
-                  ) : (
-                    <><span className="font-medium text-ink-secondary">{filteredTasks.length}</span> de {tasks.length} tareas</>
-                  )}
-                </p>
-              </div>
-
-              <KanbanBoard tasks={filteredTasks} hasEstado={hasEstado} onUpdateTask={updateTask} onTasksChange={setTasks} />
-            </main>
-          </div>
-        )}
-
-        {/* Mobile metrics strip */}
-        {showTaskViews && (
-          <div className="lg:hidden mt-6 border-t border-edge/40 pt-5 flex flex-col gap-4">
-            <div>
-              <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-3">Métricas</p>
-              <MetricsPanel tasks={tasks} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {isCreateOpen && (
-        <CreateTaskModal
-          categories={categories}
-          onClose={() => setIsCreateOpen(false)}
-          onCreated={() => { setIsCreateOpen(false); fetchTasks(true); }}
-        />
-      )}
+          </motion.div>
+        </div>
+      </main>
     </div>
   );
 }
+
+export default Dashboard;

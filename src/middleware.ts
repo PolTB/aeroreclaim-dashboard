@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export function middleware(req: NextRequest) {
+  // Escape hatch SÓLO para desarrollo local: se activa desde .env.local, que
+  // está en .gitignore y nunca llega a Vercel. Sin esto no se puede abrir el
+  // dashboard en localhost sin teclear la contraseña en cada recarga.
+  if (process.env.DISABLE_BASIC_AUTH === '1') return NextResponse.next();
+
   const authHeader = req.headers.get('authorization');
 
   if (authHeader && authHeader.startsWith('Basic ')) {

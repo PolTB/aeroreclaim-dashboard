@@ -1,137 +1,14 @@
-// ─── Domain types ─────────────────────────────────────────────────────────────
+// ─── Tipos del dashboard ──────────────────────────────────────────────────────
+// Sólo quedan los de las tres pestañas vivas: Delegaciones (Notion) y Casos
+// (Radar de Notion + pipeline del Sheet). Los tipos de Kanban, Roadmap y Blog
+// se retiraron con sus pestañas el 29/08/2026.
 
-export type Priority = 'P1 - Urgente' | 'P2 - Alta' | 'P3 - Media';
-export type Estado = 'Pendiente' | 'En Progreso' | 'Completada';
+// ─── Delegaciones ─────────────────────────────────────────────────────────────
 
-export const CATEGORIES = [
-  'SEO/Contenido',
-  'Marketing/Outreach',
-  'Comunidades',
-  'SEO/Web',
-  'SEO',
-  'Redes Sociales',
-  'Tech/Operaciones',
-  'Operaciones',
-] as const;
-
-export type Categoria = (typeof CATEGORIES)[number];
-
-export interface NotionTask {
-  id: string;
-  tarea: string;
-  prioridad: Priority | null;
-  categoria: string | null;
-  fechaLimite: string | null;
-  notas: string;
-  completada: boolean;
-  estado: Estado;
-  url: string;
-  /** Whether the Notion DB has an "Estado" select property */
-  hasEstado: boolean;
-}
-
-// ─── UI types ─────────────────────────────────────────────────────────────────
-
-export interface KanbanColumnDef {
-  id: Estado;
-  title: string;
-  color: string;
-  bgColor: string;
-}
-
-export interface Filters {
-  prioridad: Priority | 'all';
-  categoria: string | 'all';
-  estado: Estado | 'all';
-  search: string;
-}
-
-export interface UpdateTaskPayload {
-  estado?: Estado;
-  completada?: boolean;
-  notas?: string;
-  prioridad?: Priority | null;
-  categoria?: string | null;
-  fechaLimite?: string | null;
-  tarea?: string;
-}
-
-export interface CreateTaskPayload {
-  tarea: string;
-  prioridad?: Priority | null;
-  categoria?: string | null;
-  fechaLimite?: string | null;
-  notas?: string;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-export const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  {
-    id: 'Pendiente',
-    title: 'Pendiente',
-    color: '#6366f1',
-    bgColor: 'rgba(99,102,241,0.08)',
-  },
-  {
-    id: 'En Progreso',
-    title: 'En Progreso',
-    color: '#f59e0b',
-    bgColor: 'rgba(245,158,11,0.08)',
-  },
-  {
-    id: 'Completada',
-    title: 'Completada',
-    color: '#22c55e',
-    bgColor: 'rgba(34,197,94,0.08)',
-  },
-];
-
-export const PRIORITY_CONFIG: Record<
-  Priority,
-  { label: string; bg: string; text: string; dot: string }
-> = {
-  'P1 - Urgente': {
-    label: 'P1',
-    bg: 'bg-red-500/15',
-    text: 'text-red-400',
-    dot: '#ef4444',
-  },
-  'P2 - Alta': {
-    label: 'P2',
-    bg: 'bg-orange-500/15',
-    text: 'text-orange-400',
-    dot: '#f97316',
-  },
-  'P3 - Media': {
-    label: 'P3',
-    bg: 'bg-blue-500/15',
-    text: 'text-blue-400',
-    dot: '#3b82f6',
-  },
-};
-
-export const CATEGORY_COLORS: Record<string, string> = {
-  'SEO/Contenido': '#6366f1',
-  'Marketing/Outreach': '#ec4899',
-  Comunidades: '#22c55e',
-  'SEO/Web': '#3b82f6',
-  SEO: '#a78bfa',
-  'Redes Sociales': '#f59e0b',
-  'Tech/Operaciones': '#06b6d4',
-  Operaciones: '#10b981',
-};
-
-/** Returns a deterministic color for any category string */
-export function getCategoryColor(cat: string | null): string {
-  if (!cat) return '#555570';
-  return CATEGORY_COLORS[cat] ?? '#6366f1';
-}
-
-// ─── Command types ─────────────────────────────────────────────────────────────
-
-export type CommandDestinatario = 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual' | 'Paperclip';
-export type CommandEstado = 'Pendiente' | 'En Proceso' | 'Respuesta Recibida' | 'Completado' | 'Bloqueado' | 'Cancelado';
+export type CommandDestinatario =
+  | 'Claude CoWork' | 'Claude Code' | 'Claude Chat' | 'Comet' | 'ChatGPT' | 'Manual' | 'Paperclip';
+export type CommandEstado =
+  | 'Pendiente' | 'En Proceso' | 'Respuesta Recibida' | 'Completado' | 'Bloqueado' | 'Cancelado';
 export type CommandPrioridad = 'Alta' | 'Media' | 'Baja';
 export type CommandArchivoTipo = 'imagen' | 'PDF' | 'markdown' | 'HTML' | 'Google Doc' | 'otro';
 export type CommandModelo = 'Sonnet' | 'Opus' | 'Haiku';
@@ -193,35 +70,54 @@ export interface UpdateCommandPayload {
 }
 
 export const COMMAND_DESTINATARIOS: CommandDestinatario[] = [
-  'Claude CoWork', 'Claude Code', 'Claude Chat', 'Comet', 'ChatGPT', 'Manual', 'Paperclip'
+  'Claude CoWork', 'Claude Code', 'Claude Chat', 'Comet', 'ChatGPT', 'Manual', 'Paperclip',
 ];
 
 export const COMMAND_ESTADO_CONFIG: Record<CommandEstado, { label: string; color: string; bg: string; description: string }> = {
-  'Pendiente':            { label: 'Pendiente',            color: '#6b7280', bg: 'rgba(107,114,128,0.12)', description: 'Listo para enviar al agente' },
-  'En Proceso':           { label: 'En Proceso',           color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  description: 'Enviado al agente, esperando respuesta' },
-  'Respuesta Recibida':   { label: 'Respuesta Recibida',   color: '#eab308', bg: 'rgba(234,179,8,0.12)',   description: 'El agente respondió, pendiente de revisar' },
-  'Completado':           { label: 'Completado',           color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   description: 'Tarea finalizada con éxito' },
-  'Bloqueado':            { label: 'Bloqueado',            color: '#f97316', bg: 'rgba(249,115,22,0.12)',  description: 'El agente no pudo, hay que replantear' },
-  'Cancelado':            { label: 'Cancelado',            color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   description: 'Descartado, ya no se necesita' },
+  'Pendiente':          { label: 'Pendiente',          color: '#8b8ba7', bg: 'rgba(139,139,167,0.14)', description: 'Lista para enviar al agente' },
+  'En Proceso':         { label: 'En proceso',         color: '#3b82f6', bg: 'rgba(59,130,246,0.14)',  description: 'Enviada al agente, esperando respuesta' },
+  'Respuesta Recibida': { label: 'Respuesta recibida', color: '#eab308', bg: 'rgba(234,179,8,0.16)',   description: 'El agente respondió, pendiente de revisar' },
+  'Completado':         { label: 'Completada',         color: '#22c55e', bg: 'rgba(34,197,94,0.14)',   description: 'Terminada con éxito' },
+  'Bloqueado':          { label: 'Bloqueada',          color: '#f97316', bg: 'rgba(249,115,22,0.14)',  description: 'El agente no pudo, hay que replantear' },
+  'Cancelado':          { label: 'Cancelada',          color: '#ef4444', bg: 'rgba(239,68,68,0.14)',   description: 'Descartada, ya no se necesita' },
 };
 
-/** Valid state transitions — any state can go to any state (bidirectional) */
-export const COMMAND_ESTADO_ORDER: Record<CommandEstado, number> = {
-  'Pendiente': 0,
-  'En Proceso': 1,
-  'Respuesta Recibida': 2,
-  'Bloqueado': 3,
-  'Completado': 4,
-  'Cancelado': 5,
-};
-
-/** States that count as "active" (shown in main queue) */
+/** Estados que cuentan como "en curso" (aparecen en la cola principal). */
 export const ACTIVE_ESTADOS: CommandEstado[] = ['Pendiente', 'En Proceso', 'Respuesta Recibida', 'Bloqueado'];
 
-/** States that count as "archived" (shown in history) */
+/** Estados cerrados (aparecen en el historial). */
 export const ARCHIVED_ESTADOS: CommandEstado[] = ['Completado', 'Cancelado'];
 
-// ─── Case Tracker types ────────────────────────────────────────────────────────
+// ─── Normalización de estados ─────────────────────────────────────────────────
+// La DB de Notion acumula variantes del mismo estado escritas por agentes
+// distintos: "Completada" (227 filas) y "Completado" (136), "Cancelada" y
+// "Cancelado". El dashboard sólo conocía las formas en masculino, así que TODAS
+// las AERs marcadas "Completada" caían fuera de ACTIVE_ESTADOS y de
+// ARCHIVED_ESTADOS a la vez: no salían ni en la cola ni en el historial —
+// 233 de 392 delegaciones eran invisibles. Se normaliza al leer, sin tocar los
+// datos: los agentes pueden seguir escribiendo cualquiera de las dos formas.
+
+const ESTADO_ALIASES: Record<string, CommandEstado> = {
+  'completada': 'Completado',
+  'completado': 'Completado',
+  'completed': 'Completado',
+  'cancelada': 'Cancelado',
+  'cancelado': 'Cancelado',
+  'pendiente': 'Pendiente',
+  'en proceso': 'En Proceso',
+  'en progreso': 'En Proceso',
+  'respuesta recibida': 'Respuesta Recibida',
+  'bloqueado': 'Bloqueado',
+  'bloqueada': 'Bloqueado',
+};
+
+export function normalizeCommandEstado(raw: string | null | undefined): CommandEstado {
+  if (!raw) return 'Pendiente';
+  return ESTADO_ALIASES[raw.trim().toLowerCase()] ?? 'Pendiente';
+}
+
+// ─── Pipeline de casos del Sheet (vía /api/cases) ─────────────────────────────
+// Se conserva sólo para cruzarlo con el Radar y detectar leads sin ficha.
 
 export const PIPELINE_STAGES = [
   'Lead',
@@ -259,27 +155,3 @@ export interface AeroCaso {
   /** Fecha en que se envió el email de bienvenida (ISO date string) */
   welcome_sent_date?: string | null;
 }
-
-// ─── Blog Calendar types ───────────────────────────────────────────────────────
-
-export type BlogEstado = 'Publicado' | 'Listo' | 'Redactando' | 'Pendiente DEL' | 'Cancelado';
-
-export interface BlogEntry {
-  id: string;
-  titulo: string;
-  fechaPublicacion: string | null;
-  estado: BlogEstado;
-  tag: string | null;
-  urlBlog: string | null;
-  keyword: string;
-  notas: string;
-  url: string;
-}
-
-export const BLOG_ESTADO_CONFIG: Record<BlogEstado, { label: string; color: string; bg: string; dot: string }> = {
-  'Publicado':     { label: 'Publicado',     color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   dot: '#22c55e' },
-  'Listo':         { label: 'Listo',         color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  dot: '#3b82f6' },
-  'Redactando':    { label: 'Redactando',    color: '#eab308', bg: 'rgba(234,179,8,0.12)',   dot: '#eab308' },
-  'Pendiente DEL': { label: 'Pendiente DEL', color: '#f97316', bg: 'rgba(249,115,22,0.12)',  dot: '#f97316' },
-  'Cancelado':     { label: 'Cancelado',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   dot: '#ef4444' },
-};

@@ -1,8 +1,8 @@
 import { Client } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
-// ─── Client — reutiliza el MISMO token que notion.ts (Tasks) y notionCommands.ts
-// (Kanban/Delegaciones). AER-224: no se añade ninguna key nueva. ────────────────
+// ─── Client — reutiliza el MISMO token que notionCommands.ts (Delegaciones).
+// No se añade ninguna key nueva. ──────────────────────────────────────────────
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
@@ -10,7 +10,8 @@ const notion = new Client({ auth: process.env.NOTION_TOKEN });
 // si no se configura RADAR_DATABASE_ID en Vercel, para evitar fricción de deploy.
 const DB_ID = process.env.RADAR_DATABASE_ID || '39a8a573-e757-81ac-be54-d5108ba2ec8d';
 
-const ETAPAS_EXCLUIDAS = ['Perdido', 'Cobrado'];
+/** Etapas que ya no exigen acción — se devuelven igual, marcadas como cerradas. */
+export const ETAPAS_CERRADAS = ['Perdido', 'Cobrado'];
 
 export type RadarEtapa =
   | 'Lead — mandato enviado'
@@ -35,6 +36,10 @@ export interface RadarCaso {
   expediente: string;
   notas: string;
   url: string;
+  /** ISO timestamp de la última edición de la fila en Notion (frescura real del dato). */
+  lastEdited: string;
+  /** true si la etapa es Cobrado o Perdido (caso cerrado, sin acción pendiente). */
+  cerrado: boolean;
 }
 
 // ─── Parsing helpers ──────────────────────────────────────────────────────────
@@ -68,11 +73,12 @@ function getNumber(props: Props, key: string): number | null {
 
 function parseRadarCaso(page: PageObjectResponse): RadarCaso {
   const props = page.properties;
+  const etapa = getSelect(props, 'Etapa');
   return {
     id: page.id,
     cliente: getTitle(props, 'Cliente'),
     caseId: getRichText(props, 'Case ID') || getTitle(props, 'Case ID'),
-    etapa: getSelect(props, 'Etapa') as RadarEtapa | null,
+    etapa: etapa as RadarEtapa | null,
     compensacionEur: getNumber(props, 'Compensacion EUR'),
     comisionEstEur: getNumber(props, 'Comision est EUR'),
     vuelo: getRichText(props, 'Vuelo'),
@@ -83,19 +89,24 @@ function parseRadarCaso(page: PageObjectResponse): RadarCaso {
     expediente: getRichText(props, 'Expediente/Tracking'),
     notas: getRichText(props, 'Notas'),
     url: page.url,
+    lastEdited: page.last_edited_time,
+    cerrado: ETAPAS_CERRADAS.includes(etapa ?? ''),
   };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Devuelve los casos activos (Etapa ≠ Perdido y ≠ Cobrado), ordenados por
- * Fecha limite ascendente con los casos sin fecha al final.
+ * Devuelve TODOS los casos del Radar — activos y cerrados (Cobrado/Perdido) —
+ * ordenados por Fecha limite ascendente, con los casos sin fecha al final.
  *
- * El sort se aplica dos veces: en la query de Notion (best-effort) y de nuevo
- * en JS tras recibir los resultados, porque el comportamiento exacto de Notion
- * al ordenar fechas vacías no está garantizado por la API — el segundo sort
- * es lo que realmente asegura "sin fecha al final".
+ * Antes se excluían los cerrados en la propia query de Notion. Ahora vuelven
+ * todos con el flag `cerrado`: el dashboard necesita el histórico para el total
+ * cobrado y para cruzar contra el pipeline de leads del Sheet — un caso que
+ * desaparece de la lista es indistinguible de un caso que nunca existió.
+ *
+ * El sort se aplica dos veces (query de Notion + JS) porque el comportamiento
+ * de Notion al ordenar fechas vacías no está garantizado por la API.
  */
 export async function getRadarCasos(): Promise<RadarCaso[]> {
   if (!DB_ID) throw new Error('RADAR_DATABASE_ID not set');
@@ -106,12 +117,6 @@ export async function getRadarCasos(): Promise<RadarCaso[]> {
   do {
     const res = await notion.databases.query({
       database_id: DB_ID,
-      filter: {
-        and: ETAPAS_EXCLUIDAS.map((etapa) => ({
-          property: 'Etapa',
-          select: { does_not_equal: etapa },
-        })),
-      },
       sorts: [{ property: 'Fecha limite', direction: 'ascending' }],
       start_cursor: cursor,
       page_size: 100,
