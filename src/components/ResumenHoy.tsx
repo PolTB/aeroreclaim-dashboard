@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import type { RadarCaso } from '@/lib/notionRadar';
 import type { AeroCaso, NotionCommand } from '@/types';
 import type { BandejaEntry } from '@/lib/bandeja';
-import { casosActivos, diasSinMovimiento, leadsSinFicha, urgenciaDe } from '@/lib/casos';
+import { casosActivos, diasHasta, diasSinMovimiento, leadsSinFicha, urgenciaDe } from '@/lib/casos';
 
 // ─── Resumen "Hoy" ────────────────────────────────────────────────────────────
 // Una sola franja, siempre visible sobre las tres pestañas, que responde a la
@@ -44,7 +44,13 @@ export function construirSenales({
   const activos = casosActivos(radar);
   const vencidos = activos.filter((c) => urgenciaDe(c) === 'vencida').length;
   const inminentes = activos.filter((c) => urgenciaDe(c) === 'urgente').length;
-  const parados = activos.filter((c) => diasSinMovimiento(c) > 14).length;
+  // "Parado" solo si además no tiene una fecha próxima que lo esté vigilando:
+  // un caso esperando respuesta de una aerolínea con revisión fijada dentro de
+  // dos semanas está quieto por diseño, y avisar de eso es ruido, no señal.
+  const parados = activos.filter((c) => {
+    const dias = diasHasta(c.fechaLimite);
+    return diasSinMovimiento(c) > 14 && (dias === null || dias > 14);
+  }).length;
   const huerfanos = leadsSinFicha(sheetCases, radar).length;
 
   const porRevisar = commands.filter(
