@@ -30,6 +30,12 @@ export function middleware(req: NextRequest) {
   });
 }
 
+// Las rutas /api también exigen contraseña: devuelven nombres, emails, notas de
+// casos y delegaciones. Hasta el 03/10/2026 el matcher las excluía y cualquiera
+// podía leerlas (y escribir en Notion) sin autenticarse. El navegador reenvía
+// la cabecera Basic Auth en las llamadas del propio dashboard.
+// Excepciones: /api/health (ping de mantenimiento, no devuelve datos) y
+// /api/revalidate (protegido por su propio secreto).
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api/health|api/revalidate|_next/static|_next/image|favicon.ico).*)'],
 };

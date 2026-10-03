@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { RadarCaso } from '@/lib/notionRadar';
 import type { AeroCaso, NotionCommand } from '@/types';
 import { normalizeCommandEstado } from '@/types';
-import { parseBandeja, type BandejaEntry } from '@/lib/bandeja';
-
-export const BANDEJA_PAGE_ID = '3438a573-e757-819c-8985-f031ec4b9a82';
+import type { BandejaEstado, BandejaTarea } from '@/lib/bandejaDb';
 
 /** Cada cuánto se refrescan solos los datos mientras el dashboard está abierto. */
 const AUTO_REFRESH_MS = 3 * 60 * 1000;
@@ -16,8 +14,7 @@ export interface DashboardData {
   /** Casos del Sheet vía GAS — se usan sólo para detectar leads sin ficha en el Radar. */
   sheetCases: AeroCaso[];
   commands: NotionCommand[];
-  bandeja: BandejaEntry[];
-  bandejaDone: Set<string>;
+  bandeja: BandejaTarea[];
   loading: boolean;
   refreshing: boolean;
   lastRefresh: Date | null;
@@ -26,7 +23,8 @@ export interface DashboardData {
   /** Actualización optimista local de una delegación (evita releer Notion entero). */
   patchCommand: (id: string, updates: Partial<NotionCommand>) => void;
   removeCommand: (id: string) => void;
-  markBandejaDone: (key: string) => void;
+  /** Cambia el estado de una tarea de la Bandeja en Notion (optimista). */
+  setBandejaEstado: (id: string, estado: BandejaEstado) => Promise<void>;
 }
 
 async function getJson(url: string): Promise<unknown> {
@@ -43,8 +41,7 @@ export function useDashboardData(): DashboardData {
   const [radar, setRadar] = useState<RadarCaso[]>([]);
   const [sheetCases, setSheetCases] = useState<AeroCaso[]>([]);
   const [commands, setCommands] = useState<NotionCommand[]>([]);
-  const [bandeja, setBandeja] = useState<BandejaEntry[]>([]);
-  const [bandejaDone, setBandejaDone] = useState<Set<string>>(new Set());
+  const [bandeja, setBandeja] = useState<BandejaTarea[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -61,7 +58,7 @@ export function useDashboardData(): DashboardData {
       getJson('/api/notion/radar'),
       getJson('/api/cases'),
       getJson('/api/notion/commands'),
-      getJson(`/api/notion/blocks?pageId=${BANDEJA_PAGE_ID}`),
+      getJson('/api/notion/bandeja'),
     ]);
 
     if (radarRes.status === 'fulfilled') setRadar(((radarRes.value as { casos?: RadarCaso[] }).casos) ?? []);
@@ -76,10 +73,7 @@ export function useDashboardData(): DashboardData {
     } else nextErrors.commands = commandsRes.reason?.message ?? 'Error cargando delegaciones';
 
     if (bandejaRes.status === 'fulfilled') {
-      const blocks = ((bandejaRes.value as { results?: { type: string }[] }).results) ?? [];
-      const { entries, done } = parseBandeja(blocks);
-      setBandeja(entries);
-      setBandejaDone((prev) => new Set([...Array.from(prev), ...Array.from(done)]));
+      setBandeja(((bandejaRes.value as { tareas?: BandejaTarea[] }).tareas) ?? []);
     } else nextErrors.bandeja = bandejaRes.reason?.message ?? 'Error cargando la bandeja';
 
     setErrors(nextErrors);
@@ -101,14 +95,6 @@ export function useDashboardData(): DashboardData {
     };
   }, [load]);
 
-  // Rehidrata lo que Pol marcó como hecho antes de que existiera el log en Notion.
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('bandeja_done_keys') ?? '[]') as string[];
-      if (stored.length) setBandejaDone((prev) => new Set([...Array.from(prev), ...stored]));
-    } catch { /* almacenamiento no disponible — se sigue con lo que diga Notion */ }
-  }, []);
-
   const patchCommand = useCallback((id: string, updates: Partial<NotionCommand>) => {
     setCommands((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
   }, []);
@@ -117,18 +103,22 @@ export function useDashboardData(): DashboardData {
     setCommands((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  const markBandejaDone = useCallback((key: string) => {
-    setBandejaDone((prev) => {
-      const next = new Set(prev);
-      next.add(key);
-      try { localStorage.setItem('bandeja_done_keys', JSON.stringify(Array.from(next))); } catch { /* ignorado */ }
-      return next;
+  const setBandejaEstado = useCallback(async (id: string, estado: BandejaEstado) => {
+    const hoy = new Date().toISOString().slice(0, 10);
+    setBandeja((prev) => prev.map((t) => (t.id === id ? { ...t, estado, hechoEl: estado === 'Pendiente' ? null : hoy } : t)));
+    const res = await fetch('/api/notion/bandeja', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, estado }),
     });
-  }, []);
+    // Si Notion no lo guarda, se recarga: mejor ver la tarea otra vez que creer
+    // que está hecha cuando no lo está.
+    if (!res.ok) await load();
+  }, [load]);
 
   return {
-    radar, sheetCases, commands, bandeja, bandejaDone,
+    radar, sheetCases, commands, bandeja,
     loading, refreshing, lastRefresh, errors,
-    refresh: load, patchCommand, removeCommand, markBandejaDone,
+    refresh: load, patchCommand, removeCommand, setBandejaEstado,
   };
 }

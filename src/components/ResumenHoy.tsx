@@ -4,7 +4,7 @@ import { CheckCircle2, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { RadarCaso } from '@/lib/notionRadar';
 import type { AeroCaso, NotionCommand } from '@/types';
-import type { BandejaEntry } from '@/lib/bandeja';
+import type { BandejaTarea } from '@/lib/bandejaDb';
 import { casosActivos, diasHasta, diasSinMovimiento, leadsSinFicha, urgenciaDe } from '@/lib/casos';
 
 // ─── Resumen "Hoy" ────────────────────────────────────────────────────────────
@@ -25,20 +25,23 @@ interface Props {
   radar: RadarCaso[];
   sheetCases: AeroCaso[];
   commands: NotionCommand[];
-  bandeja: BandejaEntry[];
-  bandejaDone: Set<string>;
+  bandeja: BandejaTarea[];
   onIr: (vista: Vista) => void;
 }
 
 const plural = (n: number, singular: string, prural: string) => (n === 1 ? singular : prural);
 
 export function construirSenales({
-  radar, sheetCases, commands, bandeja, bandejaDone,
+  radar, sheetCases, commands, bandeja,
 }: Omit<Props, 'onIr'>): Senal[] {
   const senales: Senal[] = [];
 
-  const pendientes = bandeja.flatMap((e) => e.items.filter((i) => !bandejaDone.has(i.key)));
-  const urgentesBandeja = pendientes.filter((i) => i.type === 'urgent').length;
+  // Urgente = fecha límite hoy o ya pasada. El resto, aviso.
+  const pendientes = bandeja.filter((t) => t.estado === 'Pendiente');
+  const urgentesBandeja = pendientes.filter((t) => {
+    const d = diasHasta(t.fechaLimite);
+    return d !== null && d <= 0;
+  }).length;
   const restoBandeja = pendientes.length - urgentesBandeja;
 
   const activos = casosActivos(radar);
@@ -61,7 +64,7 @@ export function construirSenales({
     senales.push({
       id: 'bandeja-urgente',
       tono: 'urgente',
-      texto: `${urgentesBandeja} ${plural(urgentesBandeja, 'cosa urgente', 'cosas urgentes')} que solo puedes hacer tú`,
+      texto: `${urgentesBandeja} ${plural(urgentesBandeja, 'tarea tuya para hoy', 'tareas tuyas para hoy o atrasadas')}`,
       destino: 'bandeja',
     });
   }
@@ -77,7 +80,7 @@ export function construirSenales({
     senales.push({
       id: 'bandeja-resto',
       tono: 'aviso',
-      texto: `${restoBandeja} ${plural(restoBandeja, 'cosa pendiente', 'cosas pendientes')} en la bandeja`,
+      texto: `${restoBandeja} ${plural(restoBandeja, 'tarea tuya pendiente', 'tareas tuyas pendientes')} en la bandeja`,
       destino: 'bandeja',
     });
   }

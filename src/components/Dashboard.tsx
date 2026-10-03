@@ -187,11 +187,10 @@ export function Dashboard() {
             )}
             {vista === 'bandeja' && (
               <BandejaPanel
-                entries={data.bandeja}
-                done={data.bandejaDone}
+                tareas={data.bandeja}
                 error={data.errors.bandeja}
                 loading={data.loading}
-                onMarkDone={data.markBandejaDone}
+                onEstado={data.setBandejaEstado}
               />
             )}
           </motion.div>
