@@ -119,8 +119,9 @@ function ParaNoPerder({ f, c }: { f: FinanzasSnapshot; c: ReturnType<typeof calc
         <span className="text-sm text-ink-secondary">pasajeros cobrados al mes</span>
       </p>
       <p className="text-xs text-ink-secondary mt-1.5 leading-relaxed">
-        Cada mes el negocio cuesta unos <b className="text-ink">{euros(c.fijoMes)}</b>. Cada pasajero cobrado
-        deja de media <b className="text-ink">{euros(c.comisionMedia)}</b> (el 25 % de su compensación).
+        Los gastos fijos son unos <b className="text-ink">{euros(c.fijoMes)}</b> al mes (no cuentan pagos sueltos,
+        como el alta en la gestoría). Cada pasajero cobrado deja de media <b className="text-ink">{euros(c.comisionMedia)}</b> (el
+        25 % de su compensación).
       </p>
 
       <div className="mt-3">
@@ -155,7 +156,10 @@ function ParaNoPerder({ f, c }: { f: FinanzasSnapshot; c: ReturnType<typeof calc
           {Math.abs(alMes) < 5 ? (
             <span className="text-ink">quedas a cero.</span>
           ) : alMes > 0 ? (
-            <span className="text-ink">ganas unos <b className="text-success">{euros(alMes)} al mes</b> ({euros(alMes * 12)} al año).</span>
+            <>
+              <span className="text-ink">ganas unos <b className="text-success">{euros(alMes)} al mes</b> ({euros(alMes * 12)} al año), antes de impuestos.</span>
+              <span className="block text-[11px] text-ink-muted mt-0.5">De lo que ganes, aparta un 20 % para los pagos trimestrales del IRPF.</span>
+            </>
           ) : (
             <span className="text-ink">pierdes unos <b className="text-danger">{euros(-alMes)} al mes</b>.</span>
           )}
