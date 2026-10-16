@@ -50,6 +50,10 @@ export default {
           DEFAULT: rgb('--warn'),
           subtle:  'rgb(var(--warn) / 0.15)',
         },
+        serie: {
+          entra: rgb('--serie-entra'),
+          sale:  rgb('--serie-sale'),
+        },
         danger: {
           DEFAULT: rgb('--danger'),
           subtle:  'rgb(var(--danger) / 0.15)',

@@ -12,7 +12,7 @@ import { casosActivos, diasHasta, diasSinMovimiento, leadsSinFicha, urgenciaDe }
 // única pregunta con la que se abre un dashboard: ¿hay algo que atender?
 // Si no lo hay, lo dice y se calla. Nada de métricas decorativas.
 
-export type Vista = 'casos' | 'delegaciones' | 'bandeja';
+export type Vista = 'casos' | 'delegaciones' | 'bandeja' | 'finanzas';
 
 interface Senal {
   id: string;

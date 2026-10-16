@@ -5,6 +5,7 @@ import type { RadarCaso } from '@/lib/notionRadar';
 import type { AeroCaso, NotionCommand } from '@/types';
 import { normalizeCommandEstado } from '@/types';
 import type { BandejaEstado, BandejaTarea } from '@/lib/bandejaDb';
+import type { FinanzasSnapshot } from '@/lib/finanzas';
 
 /** Cada cuánto se refrescan solos los datos mientras el dashboard está abierto. */
 const AUTO_REFRESH_MS = 3 * 60 * 1000;
@@ -15,10 +16,12 @@ export interface DashboardData {
   sheetCases: AeroCaso[];
   commands: NotionCommand[];
   bandeja: BandejaTarea[];
+  /** Foto de la contabilidad (registro.js → Notion). null hasta que carga. */
+  finanzas: FinanzasSnapshot | null;
   loading: boolean;
   refreshing: boolean;
   lastRefresh: Date | null;
-  errors: Partial<Record<'radar' | 'cases' | 'commands' | 'bandeja', string>>;
+  errors: Partial<Record<'radar' | 'cases' | 'commands' | 'bandeja' | 'finanzas', string>>;
   refresh: () => void;
   /** Actualización optimista local de una delegación (evita releer Notion entero). */
   patchCommand: (id: string, updates: Partial<NotionCommand>) => void;
@@ -42,6 +45,7 @@ export function useDashboardData(): DashboardData {
   const [sheetCases, setSheetCases] = useState<AeroCaso[]>([]);
   const [commands, setCommands] = useState<NotionCommand[]>([]);
   const [bandeja, setBandeja] = useState<BandejaTarea[]>([]);
+  const [finanzas, setFinanzas] = useState<FinanzasSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -54,11 +58,12 @@ export function useDashboardData(): DashboardData {
 
     const nextErrors: DashboardData['errors'] = {};
 
-    const [radarRes, casesRes, commandsRes, bandejaRes] = await Promise.allSettled([
+    const [radarRes, casesRes, commandsRes, bandejaRes, finanzasRes] = await Promise.allSettled([
       getJson('/api/notion/radar'),
       getJson('/api/cases'),
       getJson('/api/notion/commands'),
       getJson('/api/notion/bandeja'),
+      getJson('/api/finanzas'),
     ]);
 
     if (radarRes.status === 'fulfilled') setRadar(((radarRes.value as { casos?: RadarCaso[] }).casos) ?? []);
@@ -75,6 +80,10 @@ export function useDashboardData(): DashboardData {
     if (bandejaRes.status === 'fulfilled') {
       setBandeja(((bandejaRes.value as { tareas?: BandejaTarea[] }).tareas) ?? []);
     } else nextErrors.bandeja = bandejaRes.reason?.message ?? 'Error cargando la bandeja';
+
+    if (finanzasRes.status === 'fulfilled') {
+      setFinanzas(((finanzasRes.value as { finanzas?: FinanzasSnapshot }).finanzas) ?? null);
+    } else nextErrors.finanzas = finanzasRes.reason?.message ?? 'Error cargando las finanzas';
 
     setErrors(nextErrors);
     setLastRefresh(new Date());
@@ -117,7 +126,7 @@ export function useDashboardData(): DashboardData {
   }, [load]);
 
   return {
-    radar, sheetCases, commands, bandeja,
+    radar, sheetCases, commands, bandeja, finanzas,
     loading, refreshing, lastRefresh, errors,
     refresh: load, patchCommand, removeCommand, setBandejaEstado,
   };

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Briefcase, Terminal, Inbox, RefreshCw, Sun, Moon, Loader2 } from 'lucide-react';
+import { Briefcase, Terminal, Inbox, Wallet, RefreshCw, Sun, Moon, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -10,19 +10,22 @@ import { useDashboardData } from '@/lib/useDashboardData';
 import { CasosPanel } from './CasosPanel';
 import { CommandCenter } from './CommandCenter';
 import { BandejaPanel } from './BandejaPanel';
+import { FinanzasPanel } from './FinanzasPanel';
 import { ResumenHoy, construirSenales, type Vista } from './ResumenHoy';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-// Tres pestañas, y sólo tres: Casos (el dinero), Delegaciones (el trabajo
-// delegado) y Bandeja (lo que sólo puede hacer Pol). Las otras seis del
-// refactor de mayo —Kanban, Norte, Roadmap, Agentes, Blog y Health— se
-// retiraron el 29/08/2026 porque no se usaban: mostraban estado de sistemas,
-// no decisiones. Siguen en el historial de git si alguna vuelve a hacer falta.
+// Cuatro pestañas: Casos (cada caso), Delegaciones (el trabajo delegado),
+// Bandeja (lo que sólo puede hacer Pol) y, desde el 16/10/2026, Finanzas (los
+// números del negocio en una pantalla, pedida por Pol al hacerse autónomo).
+// Las otras seis del refactor de mayo (Kanban, Norte, Roadmap, Agentes, Blog
+// y Health) se retiraron el 29/08/2026 porque no se usaban: mostraban estado
+// de sistemas, no decisiones. Siguen en el historial de git.
 
 const PESTAÑAS: { id: Vista; label: string; icono: React.ReactNode }[] = [
   { id: 'casos',        label: 'Casos',        icono: <Briefcase size={13} /> },
   { id: 'delegaciones', label: 'Delegaciones', icono: <Terminal size={13} /> },
   { id: 'bandeja',      label: 'Bandeja',      icono: <Inbox size={13} /> },
+  { id: 'finanzas',     label: 'Finanzas',     icono: <Wallet size={13} /> },
 ];
 
 export function Dashboard() {
@@ -62,6 +65,7 @@ export function Dashboard() {
     casos: señales.filter((s) => s.destino === 'casos').length,
     delegaciones: señales.filter((s) => s.destino === 'delegaciones').length,
     bandeja: señales.filter((s) => s.destino === 'bandeja').length,
+    finanzas: 0,
   };
 
   return (
@@ -105,13 +109,14 @@ export function Dashboard() {
                 key={p.id}
                 onClick={() => cambiarVista(p.id)}
                 className={clsx(
-                  'relative flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-medium',
+                  'relative flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-1.5 sm:px-4 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium',
                   vista === p.id
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-ink-muted hover:text-ink-secondary hover:bg-surface-hover',
                 )}
               >
-                {p.icono}
+                {/* Con cuatro pestañas en 375 px no caben los iconos: en móvil, solo el nombre. */}
+                <span className="hidden sm:inline-flex">{p.icono}</span>
                 <span>{p.label}</span>
                 {contadorPestaña[p.id] > 0 && vista !== p.id && (
                   <span className="w-1.5 h-1.5 rounded-full bg-warn" title="Requiere atención" />
@@ -191,6 +196,15 @@ export function Dashboard() {
                 error={data.errors.bandeja}
                 loading={data.loading}
                 onEstado={data.setBandejaEstado}
+              />
+            )}
+            {vista === 'finanzas' && (
+              <FinanzasPanel
+                finanzas={data.finanzas}
+                radar={data.radar}
+                error={data.errors.finanzas}
+                radarError={data.errors.radar}
+                loading={data.loading}
               />
             )}
           </motion.div>
