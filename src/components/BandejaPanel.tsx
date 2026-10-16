@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { Check, CheckCircle2, ChevronDown, ExternalLink, Inbox, Loader2, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
+import { format, isValid, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 import type { BandejaEstado, BandejaTarea } from '@/lib/bandejaDb';
 import { diasHasta, eur } from '@/lib/casos';
 
@@ -31,6 +33,33 @@ const TONO = {
   muted: 'text-ink-muted bg-surface-elevated border-edge/70',
 };
 
+/** "vie 16 oct", debajo del plazo relativo. */
+function fechaExacta(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = parseISO(iso);
+  return isValid(d) ? format(d, 'EEE d MMM', { locale: es }).replace(/\./g, '') : null;
+}
+
+// Un color por tema (propiedad "Tema" de la Bandeja en Notion). Un tema nuevo
+// sin color aquí sale en gris.
+const COLOR_TEMA: Record<string, string> = {
+  'Casos': 'text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/25',
+  'Leads': 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/25',
+  'Contabilidad y gestoría': 'text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/25',
+  'Instagram': 'text-pink-700 dark:text-pink-300 bg-pink-500/10 border-pink-500/25',
+  'Marketing': 'text-violet-700 dark:text-violet-300 bg-violet-500/10 border-violet-500/25',
+  'Agencias': 'text-orange-700 dark:text-orange-300 bg-orange-500/10 border-orange-500/25',
+};
+const COLOR_TEMA_OTRO = 'text-ink-muted bg-surface-elevated border-edge/70';
+
+function EtiquetaTema({ tema }: { tema: string }) {
+  return (
+    <span className={clsx('inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-md border', COLOR_TEMA[tema] ?? COLOR_TEMA_OTRO)}>
+      {tema}
+    </span>
+  );
+}
+
 function Pasos({ texto }: { texto: string }) {
   const lineas = texto.split('\n').map((l) => l.trim()).filter(Boolean);
   return (
@@ -49,20 +78,25 @@ function Tarjeta({
 }: { t: BandejaTarea; ocupada: boolean; onEstado: (estado: BandejaEstado) => void }) {
   const [abierta, setAbierta] = useState(false);
   const p = plazo(t.fechaLimite);
+  const exacta = fechaExacta(t.fechaLimite);
 
   return (
     <article className="bg-surface-card border border-edge/70 rounded-2xl p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          {t.tema && <div className="mb-1.5"><EtiquetaTema tema={t.tema} /></div>}
           <h3 className="text-sm font-semibold text-ink leading-snug">{t.tarea}</h3>
           <p className="text-[11px] text-ink-muted mt-1">
             {t.caso}
             {t.dineroEur != null && <span className="text-ink-secondary"> · {eur(t.dineroEur)} en juego</span>}
           </p>
         </div>
-        <span className={clsx('shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg border', TONO[p.tono])}>
-          {p.texto}
-        </span>
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          <span className={clsx('text-[10px] font-semibold px-2 py-1 rounded-lg border', TONO[p.tono])}>
+            {p.texto}
+          </span>
+          {exacta && <span className="text-[10px] text-ink-muted">{exacta}</span>}
+        </div>
       </div>
 
       {t.porQue && <p className="text-xs text-ink-secondary leading-relaxed mt-3">{t.porQue}</p>}

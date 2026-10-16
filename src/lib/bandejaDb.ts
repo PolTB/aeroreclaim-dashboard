@@ -24,6 +24,8 @@ export interface BandejaTarea {
   caso: string;
   dineroEur: number | null;
   tipo: string | null;
+  /** Etiqueta de tema (Casos, Leads, Contabilidad y gestoría, Instagram…). */
+  tema: string | null;
   fechaLimite: string | null;
   estado: BandejaEstado;
   hechoEl: string | null;
@@ -60,6 +62,7 @@ function parse(page: PageObjectResponse): BandejaTarea {
     caso: texto(p, 'Caso'),
     dineroEur: num?.type === 'number' ? num.number : null,
     tipo: select(p, 'Tipo'),
+    tema: select(p, 'Tema'),
     fechaLimite: fecha(p, 'Fecha límite'),
     estado: (select(p, 'Estado') as BandejaEstado) ?? 'Pendiente',
     hechoEl: fecha(p, 'Hecho el'),
