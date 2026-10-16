@@ -433,7 +433,9 @@ function mergeQueueProgress(baseCases: AeroCaso[], progress: QueueProgress[]): A
 }
 
 // ─── GAS endpoint reader (dynamic — all cases from Google Sheet) ──────────────
-// Required env var: GAS_CASES_ENDPOINT (GAS web app URL).
+// Required env vars: GAS_CASES_ENDPOINT (GAS web app URL) and
+// GAS_CASES_ENDPOINT_KEY (clave compartida: sin ella el endpoint devuelve
+// {error:'unauthorized'}; ver CasesEndpoint.js en el repo aeroreclaim-ceo).
 // Reads header row dynamically — no hardcoded column indices.
 
 async function fetchFromSheets(): Promise<AeroCaso[] | null> {
@@ -441,7 +443,12 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
   if (!gasUrl) return null;
 
   try {
-    const obRes = await fetch(gasUrl, { next: { revalidate: 60, tags: ['gas-cases'] } }); // AER-215: tag para revalidateTag() on-demand
+    const url = new URL(gasUrl);
+    const gasKey = process.env.GAS_CASES_ENDPOINT_KEY;
+    if (gasKey) url.searchParams.set('key', gasKey);
+    else console.error('[cases] GAS_CASES_ENDPOINT_KEY no configurada: el endpoint rechazará la petición');
+
+    const obRes = await fetch(url, { next: { revalidate: 60, tags: ['gas-cases'] } }); // AER-215: tag para revalidateTag() on-demand
     if (!obRes.ok) {
       console.error('[cases] GAS endpoint failed:', obRes.status, await obRes.text());
       return null;
