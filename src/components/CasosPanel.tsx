@@ -79,6 +79,11 @@ function CasoCard({ caso }: { caso: RadarCaso }) {
                 en manos de <span className="text-ink-secondary">{caso.responsable}</span>
               </p>
             )}
+            {caso.origen && (
+              <p className="text-[11px] text-ink-muted">
+                llegó por <span className="text-ink-secondary">{caso.origen}</span>
+              </p>
+            )}
           </div>
         </div>
         <div className="text-right shrink-0">

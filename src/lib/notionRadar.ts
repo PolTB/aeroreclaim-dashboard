@@ -35,6 +35,8 @@ export interface RadarCaso {
   ultimaActividad: string | null;
   expediente: string;
   notas: string;
+  /** De dónde llegó el lead (Google Ads · Search, Agencia, WhatsApp…). Columna añadida el 16/10/2026. */
+  origen: string | null;
   url: string;
   /** ISO timestamp de la última edición de la fila en Notion (frescura real del dato). */
   lastEdited: string;
@@ -88,6 +90,7 @@ function parseRadarCaso(page: PageObjectResponse): RadarCaso {
     ultimaActividad: getDate(props, 'Ultima actividad'),
     expediente: getRichText(props, 'Expediente/Tracking'),
     notas: getRichText(props, 'Notas'),
+    origen: getSelect(props, 'Origen'),
     url: page.url,
     lastEdited: page.last_edited_time,
     cerrado: ETAPAS_CERRADAS.includes(etapa ?? ''),
