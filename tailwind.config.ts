@@ -54,6 +54,12 @@ export default {
           entra: rgb('--serie-entra'),
           sale:  rgb('--serie-sale'),
         },
+        tipo: {
+          fijo:       rgb('--tipo-fijo'),
+          publicidad: rgb('--tipo-publicidad'),
+          caso:       rgb('--tipo-caso'),
+          puntual:    rgb('--tipo-puntual'),
+        },
         danger: {
           DEFAULT: rgb('--danger'),
           subtle:  'rgb(var(--danger) / 0.15)',

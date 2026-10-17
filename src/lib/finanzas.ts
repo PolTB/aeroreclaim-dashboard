@@ -14,13 +14,28 @@ export interface FinanzasSnapshot {
   generado: string;
   ejercicio: number;
   ultima_revision: string;
-  meses: { mes: string; ingresos: number; gastos: number; cobrados: number }[];
+  meses: { mes: string; ingresos: number; gastos: number; cobrados: number; por_tipo?: Record<TipoGasto, number> }[];
   categorias: { nombre: string; importe: number }[];
+  /** Gasto del año por tipo, con sus partidas (desde la versión 2 del resumen). */
+  tipos?: { tipo: TipoGasto; importe: number; partidas: { nombre: string; importe: number; veces: number }[] }[];
   /** Lo que cuesta cada mes a partir de hoy, sin IVA recuperable. */
-  fijos: { nombre: string; importe: number }[];
+  fijos: { nombre: string; importe: number; tipo?: TipoGasto }[];
   dinero_clientes: number;
   impuestos: { trimestre: string; iva: number; irpf: number; plazo?: string };
 }
+
+/** Cómo se comporta cada gasto: solo, por decisión de Pol, por caso o una sola vez. */
+export type TipoGasto = 'fijo' | 'publicidad' | 'caso' | 'puntual';
+
+export const TIPOS_GASTO: { key: TipoGasto; nombre: string }[] = [
+  { key: 'fijo', nombre: 'Fijos' },
+  { key: 'publicidad', nombre: 'Publicidad' },
+  { key: 'caso', nombre: 'Por caso' },
+  { key: 'puntual', nombre: 'Puntuales' },
+];
+
+/** Etapas en las que el caso ya se ha reclamado (y ha podido gastar burofax). */
+const RECLAMADO = ['Reclamación extrajudicial', 'AESA presentada', 'Cobrado'];
 
 /** Nuestra comisión: 25 % de la compensación, sin IVA. */
 export const COMISION = 0.25;
@@ -56,6 +71,15 @@ export function calcularFinanzas(f: FinanzasSnapshot, radar: RadarCaso[], hoy = 
     .filter((x) => x.pasajeros > 0);
   const leads = radar.filter((c) => !c.cerrado && c.etapa === LEAD).length;
 
+  // Lo que cuesta reclamar un pasajero (burofax y cartas) y lo que deja después.
+  const gastoPorCaso = f.tipos?.find((t) => t.tipo === 'caso')?.importe ?? 0;
+  const reclamados = radar.filter((c) => c.etapa && RECLAMADO.includes(c.etapa)).length;
+  const costePorPasajero = reclamados ? gastoPorCaso / reclamados : null;
+  const quedaPorPasajero = comisionMedia != null && costePorPasajero != null ? comisionMedia - costePorPasajero : null;
+  // Gasto mensual comprometido a partir de hoy, separando la publicidad (la decide Pol).
+  const fijoSinPublicidad = suma(f.fijos.filter((x) => x.tipo !== 'publicidad').map((x) => x.importe));
+  const publicidadMes = fijoMes - fijoSinPublicidad;
+
   // Previsión a 31/12: lo de hoy, menos los gastos fijos que quedan, más lo que está en marcha.
   const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const mesesQueQuedan = 11 - hoy.getMonth() + (diasMes - hoy.getDate()) / diasMes;
@@ -67,6 +91,7 @@ export function calcularFinanzas(f: FinanzasSnapshot, radar: RadarCaso[], hoy = 
     ingresos, gastos, resultado, fijoMes,
     comisionMedia, equilibrio, cobradosMes, mediaMensual,
     enMarcha: enMarcha.length, comisionEnMarcha, porEtapa, leads,
+    costePorPasajero, quedaPorPasajero, reclamados, fijoSinPublicidad, publicidadMes,
     mesesCubiertos: fijoMes ? comisionEnMarcha / fijoMes : 0,
     finSinNada, finConMarcha, pasajerosParaCero,
   };

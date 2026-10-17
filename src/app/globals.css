@@ -35,6 +35,11 @@
      (skill dataviz, 16/10/2026); no reutilizar para estados. */
   --serie-entra: 42 120 214;
   --serie-sale: 235 104 52;
+  /* Tipos de gasto (fijo, publicidad, por caso, puntual), en este orden. */
+  --tipo-fijo: 235 104 52;
+  --tipo-publicidad: 98 80 214;
+  --tipo-caso: 27 175 122;
+  --tipo-puntual: 237 161 0;
 
   --shadow: 15 23 42;
 
@@ -65,6 +70,10 @@
 
   --serie-entra: 57 135 229;
   --serie-sale: 217 89 38;
+  --tipo-fijo: 217 89 38;
+  --tipo-publicidad: 144 133 233;
+  --tipo-caso: 25 158 112;
+  --tipo-puntual: 201 133 0;
 
   --shadow: 0 0 0;
 

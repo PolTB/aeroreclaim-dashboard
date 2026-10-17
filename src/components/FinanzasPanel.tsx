@@ -5,7 +5,7 @@ import { ShieldAlert, TrendingDown, TrendingUp, PiggyBank, ChevronDown, AlertCir
 import clsx from 'clsx';
 import type { RadarCaso } from '@/lib/notionRadar';
 import {
-  calcularFinanzas, euros, mesCorto, mesLargo, CATEGORIA_LLANA, type FinanzasSnapshot,
+  calcularFinanzas, euros, mesCorto, mesLargo, CATEGORIA_LLANA, TIPOS_GASTO, type FinanzasSnapshot, type TipoGasto,
 } from '@/lib/finanzas';
 
 // ─── Finanzas ─────────────────────────────────────────────────────────────────
@@ -16,7 +16,13 @@ import {
 //  2. ¿Cuándo ganamos?      → pasajeros cobrados al mes para cubrir gastos
 //  3. ¿Qué viene?           → casos en marcha y cómo acabaría el año
 //  4. ¿Cómo evoluciona?     → mes a mes y facturación media
-//  5. ¿En qué se va?        → gastos por tipo
+//  5. ¿En qué se va?        → fijos, publicidad, por caso y puntuales
+
+// Un color por tipo de gasto (globals.css, validado para daltonismo); las clases
+// viven aquí porque Tailwind no mira src/lib.
+const COLOR_TIPO: Record<TipoGasto, string> = {
+  fijo: 'bg-tipo-fijo', publicidad: 'bg-tipo-publicidad', caso: 'bg-tipo-caso', puntual: 'bg-tipo-puntual',
+};
 
 const conSigno = (n: number) => (n > 0 ? `+${euros(n)}` : euros(n));
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
@@ -288,9 +294,19 @@ function MesAMes({ f, media }: { f: FinanzasSnapshot; media: number }) {
       </div>
 
       {m && (
-        <p className="text-xs text-ink-secondary mt-3 h-4">
+        <p className="text-xs text-ink-secondary mt-3 min-h-4">
           <span className="capitalize text-ink font-medium">{mesLargo(m.mes)}</span>: entró <b className="text-ink">{euros(m.ingresos)}</b>, salió <b className="text-ink">{euros(m.gastos)}</b>
           {m.cobrados > 0 && <> ({plural(m.cobrados, 'pasajero cobrado', 'pasajeros cobrados')})</>}
+        </p>
+      )}
+      {m?.por_tipo && m.gastos > 0 && (
+        <p className="text-[11px] text-ink-muted mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+          {TIPOS_GASTO.filter((t) => (m.por_tipo?.[t.key] ?? 0) > 0).map((t) => (
+            <span key={t.key} className="inline-flex items-center gap-1">
+              <span className={clsx('w-2 h-2 rounded-sm', COLOR_TIPO[t.key])} />
+              {t.nombre.toLowerCase()} {euros(m.por_tipo![t.key])}
+            </span>
+          ))}
         </p>
       )}
 
@@ -346,6 +362,83 @@ function EnQueSeVa({ f }: { f: FinanzasSnapshot }) {
   );
 }
 
+// ─── 5 bis. Fijos y variables ─────────────────────────────────────────────────
+// Separa lo que se paga solo cada mes de lo que decide Pol (publicidad), de lo
+// que solo aparece cuando hay un caso y de los pagos de una sola vez.
+
+function explicacion(tipo: TipoGasto, c: ReturnType<typeof calcularFinanzas>): React.ReactNode {
+  switch (tipo) {
+    case 'fijo':
+      return <>Se pagan cada mes, haya casos o no. Ahora son <b className="text-ink">{euros(c.fijoSinPublicidad)} al mes</b>.</>;
+    case 'publicidad':
+      return <>Lo decides tú: es lo que inviertes para conseguir clientes.{c.publicidadMes > 0 && <> Ahora, unos <b className="text-ink">{euros(c.publicidadMes)} al mes</b>.</>}</>;
+    case 'caso':
+      return <>Burofax y cartas: solo se gastan cuando hay un caso.{c.costePorPasajero != null && <> Unos <b className="text-ink">{euros(c.costePorPasajero)} por pasajero</b> reclamado.</>}</>;
+    case 'puntual':
+      return <>Pagos de una sola vez, como las altas en Hacienda y la Seguridad Social. No se repiten.</>;
+  }
+}
+
+function FijosYVariables({ f, c }: { f: FinanzasSnapshot; c: ReturnType<typeof calcularFinanzas> }) {
+  const tipos = TIPOS_GASTO.map((t) => ({ ...t, ...(f.tipos?.find((x) => x.tipo === t.key) ?? { importe: 0, partidas: [] }) }));
+  const total = tipos.reduce((s, x) => s + x.importe, 0) || 1;
+  const visibles = tipos.filter((t) => t.importe > 0);
+  return (
+    <Tarjeta titulo="En qué se va el dinero" subtitulo={`Desde ${mesLargo(f.meses[0]?.mes ?? '2026-01')}, sin IVA`}>
+      {/* Barra apilada: cada tramo es un tipo de gasto, separados por 2 px de fondo. */}
+      <div className="flex h-3 mt-3 gap-0.5" role="img" aria-label={visibles.map((t) => `${t.nombre}: ${euros(t.importe)}`).join(', ')}>
+        {visibles.map((t, i) => (
+          <span
+            key={t.key}
+            title={`${t.nombre}: ${euros(t.importe)} (${Math.round((t.importe / total) * 100)} %)`}
+            className={clsx(COLOR_TIPO[t.key], i === 0 && 'rounded-l', i === visibles.length - 1 && 'rounded-r')}
+            style={{ width: `${(t.importe / total) * 100}%` }}
+          />
+        ))}
+      </div>
+
+      <ul className="flex flex-col gap-2.5 mt-4">
+        {tipos.map((t) => (
+          <li key={t.key}>
+            <details className="group">
+              <summary className="list-none cursor-pointer">
+                <div className="flex justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-1.5 text-ink font-medium">
+                    <span className={clsx('w-2.5 h-2.5 rounded-sm shrink-0', COLOR_TIPO[t.key])} />
+                    {t.nombre}
+                    {t.partidas.length > 0 && <ChevronDown size={11} className="text-ink-muted transition-transform group-open:rotate-180" />}
+                  </span>
+                  <span className="text-ink tabular-nums shrink-0">
+                    <b>{euros(t.importe)}</b> <span className="text-ink-muted">· {Math.round((t.importe / total) * 100)} %</span>
+                  </span>
+                </div>
+                <p className="text-[11px] text-ink-secondary mt-0.5 ml-4 leading-relaxed">{explicacion(t.key, c)}</p>
+              </summary>
+              {t.partidas.length > 0 && (
+                <ul className="mt-1.5 ml-4 pl-2 border-l border-edge/60 flex flex-col gap-0.5">
+                  {t.partidas.map((x) => (
+                    <li key={x.nombre} className="flex justify-between gap-2 text-[11px]">
+                      <span className="text-ink-secondary">{x.nombre}{x.veces > 1 && <span className="text-ink-muted"> · {x.veces} pagos</span>}</span>
+                      <span className="text-ink tabular-nums shrink-0">{euros(x.importe)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          </li>
+        ))}
+      </ul>
+
+      {c.quedaPorPasajero != null && c.comisionMedia != null && c.costePorPasajero != null && (
+        <p className="text-xs text-ink-secondary mt-4 pt-3 border-t border-edge/50 leading-relaxed">
+          De cada pasajero cobrado te quedan unos <b className="text-ink">{euros(c.quedaPorPasajero)}</b>: su comisión
+          ({euros(c.comisionMedia)} de media) menos lo que cuesta reclamarlo ({euros(c.costePorPasajero)}). Con eso se pagan los fijos.
+        </p>
+      )}
+    </Tarjeta>
+  );
+}
+
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function FinanzasPanel({ finanzas, radar, error, radarError, loading }: {
@@ -394,7 +487,7 @@ export function FinanzasPanel({ finanzas, radar, error, radarError, loading }: {
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <MesAMes f={finanzas} media={c.mediaMensual} />
-        <EnQueSeVa f={finanzas} />
+        {finanzas.tipos ? <FijosYVariables f={finanzas} c={c} /> : <EnQueSeVa f={finanzas} />}
       </div>
       <p className="text-[10px] text-ink-muted text-center">
         Contabilidad del {fechaCorta(finanzas.generado)} · casos del Radar en directo · cifras sin IVA y aproximadas: los impuestos los calcula la gestoría.
