@@ -18,8 +18,8 @@ export interface FinanzasSnapshot {
   categorias: { nombre: string; importe: number }[];
   /** Gasto del año por tipo, con sus partidas (desde la versión 2 del resumen). */
   tipos?: { tipo: TipoGasto; importe: number; partidas: { nombre: string; importe: number; veces: number }[] }[];
-  /** Lo que cuesta cada mes a partir de hoy, sin IVA recuperable. */
-  fijos: { nombre: string; importe: number; tipo?: TipoGasto }[];
+  /** Lo que cuesta cada mes a partir de hoy, sin IVA recuperable. `desde`: día en que empezó ese importe. */
+  fijos: { nombre: string; importe: number; tipo?: TipoGasto; desde?: string }[];
   dinero_clientes: number;
   impuestos: { trimestre: string; iva: number; irpf: number; plazo?: string };
 }
@@ -96,6 +96,8 @@ export function calcularFinanzas(f: FinanzasSnapshot, radar: RadarCaso[], hoy = 
     finSinNada, finConMarcha, pasajerosParaCero,
   };
 }
+
+export type CalculoFinanzas = ReturnType<typeof calcularFinanzas>;
 
 /** 1.176 €, con punto de miles también en 4 cifras (es-ES no lo pone). */
 export function euros(n: number, decimales = 0): string {

@@ -40,6 +40,8 @@ export interface RadarCaso {
   url: string;
   /** ISO timestamp de la última edición de la fila en Notion (frescura real del dato). */
   lastEdited: string;
+  /** ISO timestamp de creación de la fila: fecha de entrada del lead si el Case ID no la lleva. */
+  creado: string;
   /** true si la etapa es Cobrado o Perdido (caso cerrado, sin acción pendiente). */
   cerrado: boolean;
 }
@@ -93,6 +95,7 @@ function parseRadarCaso(page: PageObjectResponse): RadarCaso {
     origen: getSelect(props, 'Origen'),
     url: page.url,
     lastEdited: page.last_edited_time,
+    creado: page.created_time,
     cerrado: ETAPAS_CERRADAS.includes(etapa ?? ''),
   };
 }
