@@ -8,7 +8,7 @@ import type { AeroCaso } from '@/types';
 // que las dos digan exactamente lo mismo sobre el mismo caso.
 
 export const ETAPAS = [
-  { key: 'Lead — mandato enviado',    short: 'Mandato enviado' },
+  { key: 'Lead — mandato enviado',    short: 'Lead (sin ACEPTO)' },
   { key: 'Cliente formalizado',       short: 'Formalizado' },
   { key: 'Reclamación extrajudicial', short: 'Reclamando' },
   { key: 'AESA presentada',           short: 'AESA' },
