@@ -184,11 +184,16 @@ export function proyectar(s: Supuestos, b: Base, hoy = new Date(), n = 12) {
   const filas: MesPrevisto[] = Array.from({ length: n }, (_, i) => ({
     mes: sumarMeses(ymHoy, i + 1), leads: 0, firman: 0, cobran: 0, cobranEnMarcha: 0, ingresos: 0, gastos: b.fijoMes, resultado: 0, acumulado: 0,
   }));
+  // Un cobro no llega el mes exacto: se reparte entre el mes previsto (la mitad) y el de antes y
+  // el de después (un cuarto cada uno). Si no, salen meses a 0 € que solo son un efecto del cálculo.
   const cobrar = (k: number, pasajeros: number, comision: number, enMarcha: boolean) => {
-    if (k < 1 || k > n) return;
-    filas[k - 1].cobran += pasajeros;
-    filas[k - 1].ingresos += pasajeros * comision;
-    if (enMarcha) filas[k - 1].cobranEnMarcha += pasajeros;
+    const reparto: [number, number][] = k <= 1 ? [[1, 0.75], [2, 0.25]] : [[k - 1, 0.25], [k, 0.5], [k + 1, 0.25]];
+    reparto.forEach(([j, parte]) => {
+      if (j < 1 || j > n) return;
+      filas[j - 1].cobran += pasajeros * parte;
+      filas[j - 1].ingresos += pasajeros * parte * comision;
+      if (enMarcha) filas[j - 1].cobranEnMarcha += pasajeros * parte;
+    });
   };
   const comisionDe = (c: RadarCaso) => ((c.compensacionEur ?? 0) > 0 ? c.compensacionEur! * COMISION : b.comisionMedia);
 
