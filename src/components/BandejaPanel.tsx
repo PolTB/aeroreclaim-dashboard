@@ -273,6 +273,19 @@ interface Props {
   onEstado: (id: string, estado: BandejaEstado) => Promise<void>;
 }
 
+// Momento en que se resolvió: "Hecho el" con hora; en las antiguas, que solo
+// llevan fecha, la última edición de la fila.
+const cuando = (t: BandejaTarea): string => (t.hechoEl?.includes('T') ? t.hechoEl : t.editada);
+
+function etiquetaCuando(iso: string): string {
+  const d = new Date(iso);
+  const hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+  const dia = (x: Date) => x.toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' });
+  if (dia(d) === dia(new Date())) return `hoy ${hora}`;
+  if (dia(d) === dia(new Date(Date.now() - 86400000))) return `ayer ${hora}`;
+  return `${d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', timeZone: 'Europe/Madrid' })} ${hora}`;
+}
+
 export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
   const [ocupada, setOcupada] = useState<string | null>(null);
   const [verResueltas, setVerResueltas] = useState(false);
@@ -284,7 +297,11 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
         .sort((a, b) => (a.fechaLimite ?? '9999') < (b.fechaLimite ?? '9999') ? -1 : 1),
     [tareas],
   );
-  const resueltas = useMemo(() => tareas.filter((t) => t.estado !== 'Pendiente'), [tareas]);
+  // La última marcada, primero: si un "Hecho" fue un error, está arriba.
+  const resueltas = useMemo(
+    () => tareas.filter((t) => t.estado !== 'Pendiente').sort((a, b) => (cuando(b) > cuando(a) ? 1 : -1)),
+    [tareas],
+  );
 
   async function cambiar(id: string, estado: BandejaEstado) {
     setOcupada(id);
@@ -348,13 +365,17 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
             className="flex items-center gap-2 text-xs text-ink-muted hover:text-ink-secondary"
           >
             <ChevronDown size={13} className={clsx('transition-transform', verResueltas && 'rotate-180')} />
-            Resueltas en las últimas 2 semanas ({resueltas.length})
+            Resueltas en las últimas 2 semanas ({resueltas.length}), la última primero
           </button>
           {verResueltas && (
             <div className="mt-3 flex flex-col gap-2">
               {resueltas.map((t) => (
                 <div key={t.id} className="flex items-center justify-between gap-3 bg-surface-card border border-edge/50 rounded-xl px-3 py-2">
-                  <p className="text-xs text-ink-muted line-through decoration-ink-faint min-w-0 truncate">{t.tarea}</p>
+                  <div className="min-w-0 flex items-baseline gap-2">
+                    <span className="shrink-0 text-[10px] text-ink-faint tabular-nums">{etiquetaCuando(cuando(t))}</span>
+                    <p className="text-xs text-ink-muted line-through decoration-ink-faint min-w-0 truncate">{t.tarea}</p>
+                    {t.estado === 'Descartado' && <span className="shrink-0 text-[10px] text-ink-faint">No aplica</span>}
+                  </div>
                   <button
                     onClick={() => cambiar(t.id, 'Pendiente')}
                     disabled={ocupada === t.id}

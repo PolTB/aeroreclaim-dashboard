@@ -113,8 +113,8 @@ export function useDashboardData(): DashboardData {
   }, []);
 
   const setBandejaEstado = useCallback(async (id: string, estado: BandejaEstado) => {
-    const hoy = new Date().toISOString().slice(0, 10);
-    setBandeja((prev) => prev.map((t) => (t.id === id ? { ...t, estado, hechoEl: estado === 'Pendiente' ? null : hoy } : t)));
+    const ahora = new Date().toISOString();
+    setBandeja((prev) => prev.map((t) => (t.id === id ? { ...t, estado, hechoEl: estado === 'Pendiente' ? null : ahora, editada: ahora } : t)));
     const res = await fetch('/api/notion/bandeja', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

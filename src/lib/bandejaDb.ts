@@ -28,9 +28,11 @@ export interface BandejaTarea {
   tema: string | null;
   fechaLimite: string | null;
   estado: BandejaEstado;
+  /** Fecha y hora del clic (las antiguas solo llevan fecha). */
   hechoEl: string | null;
   enlace: string | null;
   creada: string;
+  editada: string;
 }
 
 type Props = PageObjectResponse['properties'];
@@ -68,6 +70,7 @@ function parse(page: PageObjectResponse): BandejaTarea {
     hechoEl: fecha(p, 'Hecho el'),
     enlace: url?.type === 'url' ? url.url : null,
     creada: page.created_time,
+    editada: page.last_edited_time,
   };
 }
 
@@ -97,12 +100,14 @@ export async function getBandeja(): Promise<BandejaTarea[]> {
 }
 
 export async function setEstado(id: string, estado: BandejaEstado): Promise<void> {
-  const hoy = new Date().toISOString().slice(0, 10);
+  // Con hora: así las resueltas salen en el orden en que Pol las marcó y un
+  // clic equivocado se encuentra arriba del todo.
+  const ahora = new Date().toISOString();
   await notion.pages.update({
     page_id: id,
     properties: {
       Estado: { select: { name: estado } },
-      'Hecho el': estado === 'Pendiente' ? { date: null } : { date: { start: hoy } },
+      'Hecho el': estado === 'Pendiente' ? { date: null } : { date: { start: ahora } },
     },
   });
 }
