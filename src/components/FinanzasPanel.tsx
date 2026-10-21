@@ -10,6 +10,7 @@ import {
 import { medir } from '@/lib/prevision';
 import { Tarjeta, Cifra, Opciones, conSigno } from './finanzasUi';
 import { Prevision, Evolucion } from './FinanzasPrevision';
+import { AgenciasBloque } from './AgenciasBloque';
 
 // ─── Finanzas ─────────────────────────────────────────────────────────────────
 // Pensada para quien no vive entre números: cada bloque responde a una sola
@@ -22,6 +23,7 @@ import { Prevision, Evolucion } from './FinanzasPrevision';
 //  5. ¿Qué viene?           → casos en marcha y cómo acabaría el año
 //  6. Mes a mes             → entra y sale cada mes
 //  7. ¿En qué se va?        → cada mes o acumulado: fijos, publicidad, por caso y puntuales
+//  +  Agencias               → visitas por QR, leads, cobrados y lo que les debemos (AgenciasBloque)
 
 // Un color por tipo de gasto (globals.css, validado para daltonismo); las clases
 // viven aquí porque Tailwind no mira src/lib.
@@ -531,6 +533,7 @@ export function FinanzasPanel({ finanzas, radar, error, radarError, loading }: {
       <ComoVamos f={finanzas} c={c} />
       <Prevision c={c} radar={radar} m={m} />
       <Evolucion f={finanzas} m={m} />
+      <AgenciasBloque radar={radar} />
       <div className="grid gap-4 lg:grid-cols-2">
         <ParaNoPerder f={finanzas} c={c} />
         <LoQueViene c={c} hayRadar={!radarError || radar.length > 0} />
