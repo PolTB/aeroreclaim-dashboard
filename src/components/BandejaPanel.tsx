@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, ExternalLink, Inbox, Loader2, RotateCcw } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, Copy, ExternalLink, Inbox, Loader2, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { format, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -60,15 +60,127 @@ function EtiquetaTema({ tema }: { tema: string }) {
   );
 }
 
+// ─── Texto para copiar ────────────────────────────────────────────────────────
+// En "Cómo", lo que Pol tiene que copiar y pegar va entre « »:
+//   · en una línea propia (o en varias: un email entero) → recuadro con botón Copiar
+//   · dentro de una frase (un teléfono, un email, un importe) → etiqueta que se copia al pulsarla
+// Se copia sin las comillas « ».
+
+async function copiar(texto: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch {
+    // Navegadores sin permiso de portapapeles: el método antiguo.
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+function useCopiado(): [boolean, (texto: string) => void] {
+  const [copiado, setCopiado] = useState(false);
+  return [
+    copiado,
+    (texto) => {
+      copiar(texto).then((ok) => {
+        if (!ok) return;
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 1500);
+      });
+    },
+  ];
+}
+
+function BloqueCopiar({ texto }: { texto: string }) {
+  const [copiado, onCopiar] = useCopiado();
+  return (
+    <div className="rounded-lg border border-accent/30 bg-surface-card">
+      <p className="px-3 pt-2.5 pb-2 text-xs text-ink leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
+      <div className="flex justify-end px-2 pb-2">
+        <button
+          onClick={() => onCopiar(texto)}
+          className={clsx(
+            'flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold border',
+            copiado
+              ? 'text-success bg-success/10 border-success/30'
+              : 'text-accent bg-accent/10 border-accent/30 hover:bg-accent/20',
+          )}
+        >
+          {copiado ? <Check size={11} /> : <Copy size={11} />}
+          {copiado ? 'Copiado' : 'Copiar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EtiquetaCopiar({ texto }: { texto: string }) {
+  const [copiado, onCopiar] = useCopiado();
+  return (
+    <button
+      onClick={() => onCopiar(texto)}
+      title="Copiar"
+      className={clsx(
+        'inline-flex items-center gap-1 mx-0.5 px-1.5 py-0.5 rounded-md border font-medium align-baseline',
+        copiado
+          ? 'text-success bg-success/10 border-success/30'
+          : 'text-ink bg-accent/10 border-accent/30 hover:bg-accent/20',
+      )}
+    >
+      {texto}
+      {copiado ? <Check size={10} /> : <Copy size={10} className="text-accent" />}
+    </button>
+  );
+}
+
+/** Una línea de pasos con los «…» de dentro convertidos en etiquetas para copiar. */
+function LineaPaso({ texto }: { texto: string }) {
+  const partes = texto.split(/«([^»]+)»/);
+  return (
+    <>
+      {partes.map((p, i) => (i % 2 === 1 ? <EtiquetaCopiar key={i} texto={p.trim()} /> : p))}
+    </>
+  );
+}
+
+type Trozo = { tipo: 'paso'; texto: string } | { tipo: 'copiar'; texto: string };
+
+/** Separa el "Cómo" en pasos y bloques «…» que ocupan su propia línea (o varias). */
+function trocear(texto: string): Trozo[] {
+  const trozos: Trozo[] = [];
+  const pasos = (t: string) =>
+    t.split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => trozos.push({ tipo: 'paso', texto: l }));
+  const bloque = /^[ \t]*«([\s\S]*?)»[ \t]*$/gm;
+  let ultimo = 0;
+  let m: RegExpExecArray | null;
+  while ((m = bloque.exec(texto)) !== null) {
+    pasos(texto.slice(ultimo, m.index));
+    trozos.push({ tipo: 'copiar', texto: m[1].trim() });
+    ultimo = m.index + m[0].length;
+  }
+  pasos(texto.slice(ultimo));
+  return trozos;
+}
+
 function Pasos({ texto }: { texto: string }) {
-  const lineas = texto.split('\n').map((l) => l.trim()).filter(Boolean);
   return (
     <ol className="flex flex-col gap-1.5">
-      {lineas.map((l, i) => (
-        <li key={i} className="text-xs text-ink-secondary leading-relaxed">
-          {l}
-        </li>
-      ))}
+      {trocear(texto).map((t, i) =>
+        t.tipo === 'copiar' ? (
+          <li key={i}><BloqueCopiar texto={t.texto} /></li>
+        ) : (
+          <li key={i} className="text-xs text-ink-secondary leading-relaxed">
+            <LineaPaso texto={t.texto} />
+          </li>
+        ),
+      )}
     </ol>
   );
 }
