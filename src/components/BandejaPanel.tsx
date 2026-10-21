@@ -100,10 +100,12 @@ function useCopiado(): [boolean, (texto: string) => void] {
 
 function BloqueCopiar({ texto }: { texto: string }) {
   const [copiado, onCopiar] = useCopiado();
+  // Un email o un asunto caben en una fila con el botón al lado.
+  const corto = texto.length <= 60 && !texto.includes('\n');
   return (
-    <div className="rounded-lg border border-accent/30 bg-surface-card">
-      <p className="px-3 pt-2.5 pb-2 text-xs text-ink leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
-      <div className="flex justify-end px-2 pb-2">
+    <div className={clsx('rounded-lg border border-accent/30 bg-surface-card', corto && 'flex items-center justify-between gap-2')}>
+      <p className={clsx('px-3 text-xs text-ink leading-relaxed whitespace-pre-wrap break-words', corto ? 'py-2 min-w-0' : 'pt-2.5 pb-2')}>{texto}</p>
+      <div className={clsx('flex justify-end px-2', corto ? 'shrink-0' : 'pb-2')}>
         <button
           onClick={() => onCopiar(texto)}
           className={clsx(
