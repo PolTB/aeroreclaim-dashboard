@@ -31,6 +31,10 @@ export interface BandejaTarea {
   /** Fecha y hora del clic (las antiguas solo llevan fecha). */
   hechoEl: string | null;
   enlace: string | null;
+  /** "CEO" si la tarea la hace el CEO (antes, una AER de Delegaciones); si no, de Pol. */
+  para: 'Pol' | 'CEO';
+  /** Encargo completo para el CEO; es lo que copia el botón "Copiar para Claude". */
+  instrucciones: string;
   creada: string;
   editada: string;
 }
@@ -69,6 +73,8 @@ function parse(page: PageObjectResponse): BandejaTarea {
     estado: (select(p, 'Estado') as BandejaEstado) ?? 'Pendiente',
     hechoEl: fecha(p, 'Hecho el'),
     enlace: url?.type === 'url' ? url.url : null,
+    para: select(p, 'Para') === 'CEO' ? 'CEO' : 'Pol',
+    instrucciones: texto(p, 'Instrucciones CEO'),
     creada: page.created_time,
     editada: page.last_edited_time,
   };

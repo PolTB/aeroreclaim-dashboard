@@ -2,28 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Briefcase, Terminal, Inbox, Wallet, RefreshCw, Sun, Moon, Loader2 } from 'lucide-react';
+import { Briefcase, Inbox, Wallet, RefreshCw, Sun, Moon, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useDashboardData } from '@/lib/useDashboardData';
 import { CasosPanel } from './CasosPanel';
-import { CommandCenter } from './CommandCenter';
 import { BandejaPanel } from './BandejaPanel';
 import { FinanzasPanel } from './FinanzasPanel';
 import { ResumenHoy, construirSenales, type Vista } from './ResumenHoy';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-// Cuatro pestañas: Casos (cada caso), Delegaciones (el trabajo delegado),
-// Bandeja (lo que sólo puede hacer Pol) y, desde el 16/10/2026, Finanzas (los
-// números del negocio en una pantalla, pedida por Pol al hacerse autónomo).
+// Tres pestañas: Casos (cada caso), Bandeja (lo que tiene que hacer Pol, y
+// desde el 22/10/2026 también las tareas del CEO, que antes vivían en la
+// pestaña Delegaciones) y, desde el 16/10/2026, Finanzas (los números del
+// negocio en una pantalla, pedida por Pol al hacerse autónomo).
 // Las otras seis del refactor de mayo (Kanban, Norte, Roadmap, Agentes, Blog
 // y Health) se retiraron el 29/08/2026 porque no se usaban: mostraban estado
 // de sistemas, no decisiones. Siguen en el historial de git.
 
 const PESTAÑAS: { id: Vista; label: string; icono: React.ReactNode }[] = [
   { id: 'casos',        label: 'Casos',        icono: <Briefcase size={13} /> },
-  { id: 'delegaciones', label: 'Delegaciones', icono: <Terminal size={13} /> },
   { id: 'bandeja',      label: 'Bandeja',      icono: <Inbox size={13} /> },
   { id: 'finanzas',     label: 'Finanzas',     icono: <Wallet size={13} /> },
 ];
@@ -41,8 +40,8 @@ export function Dashboard() {
     document.documentElement.classList.toggle('dark', dark);
   }, []);
 
-  // La pestaña abierta también se recuerda: si Pol vive en Delegaciones, que
-  // el dashboard abra en Delegaciones.
+  // La pestaña abierta también se recuerda: si Pol vive en la Bandeja, que el
+  // dashboard abra en la Bandeja.
   useEffect(() => {
     const stored = localStorage.getItem('vista') as Vista | null;
     if (stored && PESTAÑAS.some((p) => p.id === stored)) setVista(stored);
@@ -63,7 +62,6 @@ export function Dashboard() {
   const señales = construirSenales(data);
   const contadorPestaña: Record<Vista, number> = {
     casos: señales.filter((s) => s.destino === 'casos').length,
-    delegaciones: señales.filter((s) => s.destino === 'delegaciones').length,
     bandeja: señales.filter((s) => s.destino === 'bandeja').length,
     finanzas: 0,
   };
@@ -115,7 +113,7 @@ export function Dashboard() {
                     : 'text-ink-muted hover:text-ink-secondary hover:bg-surface-hover',
                 )}
               >
-                {/* Con cuatro pestañas en 375 px no caben los iconos: en móvil, solo el nombre. */}
+                {/* En 375 px no caben los iconos: en móvil, solo el nombre. */}
                 <span className="hidden sm:inline-flex">{p.icono}</span>
                 <span>{p.label}</span>
                 {contadorPestaña[p.id] > 0 && vista !== p.id && (
@@ -178,16 +176,6 @@ export function Dashboard() {
                 sheetCases={data.sheetCases}
                 error={data.errors.radar}
                 loading={data.loading}
-              />
-            )}
-            {vista === 'delegaciones' && (
-              <CommandCenter
-                commands={data.commands}
-                loading={data.loading}
-                error={data.errors.commands}
-                onRefresh={data.refresh}
-                onPatch={data.patchCommand}
-                onRemove={data.removeCommand}
               />
             )}
             {vista === 'bandeja' && (

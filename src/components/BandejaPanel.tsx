@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, Copy, ExternalLink, Inbox, Loader2, RotateCcw } from 'lucide-react';
+import { Bot, Check, CheckCircle2, ChevronDown, Copy, ExternalLink, Inbox, Loader2, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { format, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { BandejaEstado, BandejaTarea } from '@/lib/bandejaDb';
 import { diasHasta, eur } from '@/lib/casos';
+import { cuentaEnBandeja, esDelCeo, textoParaClaude } from '@/lib/tareasCeo';
 
 // ─── Bandeja de Pol ───────────────────────────────────────────────────────────
 // Una tarjeta por tarea, con lo justo para actuar sin abrir nada más:
@@ -16,6 +17,9 @@ import { diasHasta, eur } from '@/lib/casos';
 //   · por qué importa y cómo hacerlo, paso a paso (desplegable)
 // "Hecho" cambia el Estado de la fila en Notion: persiste en cualquier
 // dispositivo y desaparece de la lista de pendientes.
+// Las tareas del CEO (antes, AERs de la pestaña Delegaciones) llevan la
+// etiqueta "Para el CEO" y un botón que copia el encargo para pegarlo en
+// Claude. Con fecha van en la lista principal; sin fecha, en un grupo aparte.
 
 function plazo(iso: string | null): { texto: string; tono: 'danger' | 'warn' | 'muted' } {
   const d = diasHasta(iso);
@@ -187,18 +191,53 @@ function Pasos({ texto }: { texto: string }) {
   );
 }
 
+const PASOS_CEO =
+  '1. Abre Claude en el ordenador, en la carpeta aeroreclaim-ceo.\n' +
+  '2. Pulsa Ejecutar en la franja Hoy, encima de la caja de texto. O pulsa Copiar para Claude en esta tarjeta y pégalo.\n' +
+  '3. El CEO la marca Hecho al terminar.';
+
+function BotonCopiarClaude({ t }: { t: BandejaTarea }) {
+  const [copiado, onCopiar] = useCopiado();
+  return (
+    <button
+      onClick={() => onCopiar(textoParaClaude(t))}
+      className={clsx(
+        'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border',
+        copiado
+          ? 'text-success bg-success/10 border-success/30'
+          : 'text-accent bg-accent/10 border-accent/30 hover:bg-accent/20',
+      )}
+      title="Copia el encargo para pegarlo en Claude Code"
+    >
+      {copiado ? <Check size={11} /> : <Copy size={11} />}
+      {copiado ? 'Copiado' : 'Copiar para Claude'}
+    </button>
+  );
+}
+
 function Tarjeta({
   t, ocupada, onEstado,
 }: { t: BandejaTarea; ocupada: boolean; onEstado: (estado: BandejaEstado) => void }) {
   const [abierta, setAbierta] = useState(false);
   const p = plazo(t.fechaLimite);
   const exacta = fechaExacta(t.fechaLimite);
+  const ceo = esDelCeo(t);
+  const como = t.como || (ceo ? PASOS_CEO : '');
 
   return (
     <article className="bg-surface-card border border-edge/70 rounded-2xl p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {t.tema && <div className="mb-1.5"><EtiquetaTema tema={t.tema} /></div>}
+          {(t.tema || ceo) && (
+            <div className="mb-1.5 flex flex-wrap gap-1">
+              {ceo && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md border text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 border-indigo-500/25">
+                  <Bot size={10} /> Para el CEO
+                </span>
+              )}
+              {t.tema && <EtiquetaTema tema={t.tema} />}
+            </div>
+          )}
           <h3 className="text-sm font-semibold text-ink leading-snug">{t.tarea}</h3>
           <p className="text-[11px] text-ink-muted mt-1">
             {t.caso}
@@ -215,7 +254,7 @@ function Tarjeta({
 
       {t.porQue && <p className="text-xs text-ink-secondary leading-relaxed mt-3">{t.porQue}</p>}
 
-      {t.como && (
+      {como && (
         <div className="mt-3">
           <button
             onClick={() => setAbierta((v) => !v)}
@@ -226,7 +265,13 @@ function Tarjeta({
           </button>
           {abierta && (
             <div className="mt-2 p-3 rounded-xl bg-surface-elevated border border-edge/60">
-              <Pasos texto={t.como} />
+              <Pasos texto={como} />
+              {ceo && t.instrucciones && (
+                <div className="mt-3 pt-3 border-t border-edge/50">
+                  <p className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider mb-1">Encargo para el CEO</p>
+                  <p className="text-[11px] text-ink-muted leading-relaxed whitespace-pre-wrap break-words">{t.instrucciones}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -244,6 +289,7 @@ function Tarjeta({
           </a>
         ) : <span />}
         <div className="flex items-center gap-2">
+          {ceo && <BotonCopiarClaude t={t} />}
           <button
             onClick={() => onEstado('Descartado')}
             disabled={ocupada}
@@ -293,8 +339,13 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
   const pendientes = useMemo(
     () =>
       tareas
-        .filter((t) => t.estado === 'Pendiente')
+        .filter(cuentaEnBandeja)
         .sort((a, b) => (a.fechaLimite ?? '9999') < (b.fechaLimite ?? '9999') ? -1 : 1),
+    [tareas],
+  );
+  // Tareas del CEO sin día fijo: no son urgentes para Pol, pero se ven.
+  const ceoSinFecha = useMemo(
+    () => tareas.filter((t) => t.estado === 'Pendiente' && esDelCeo(t) && !t.fechaLimite),
     [tareas],
   );
   // La última marcada, primero: si un "Hecho" fue un error, está arriba.
@@ -327,12 +378,12 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
       <div>
         <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
           <Inbox size={15} className="text-accent" />
-          Lo que solo puedes hacer tú
+          Tu bandeja
         </h2>
         <p className="text-xs text-ink-muted mt-1">
           {pendientes.length === 0
             ? 'Nada pendiente. El resto lo llevan los agentes.'
-            : `${pendientes.length} ${pendientes.length === 1 ? 'tarea' : 'tareas'}, la más urgente primero.`}
+            : `${pendientes.length} ${pendientes.length === 1 ? 'tarea' : 'tareas'}, la más urgente primero. Las que dicen "Para el CEO" las hace Claude: solo tienes que abrirlo.`}
         </p>
       </div>
 
@@ -349,7 +400,7 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
           </div>
           <p className="text-sm font-medium text-ink">Bandeja vacía</p>
           <p className="text-xs text-ink-muted mt-1 max-w-sm">
-            Aquí solo aparece lo que ningún agente puede hacer por ti: enviar un email revisado, firmar, pagar, llamar o decidir.
+            Aquí aparece lo que solo puedes hacer tú (enviar un email revisado, firmar, pagar, llamar o decidir) y lo que el CEO tiene que hacer un día concreto cuando abras Claude.
           </p>
         </div>
       )}
@@ -357,6 +408,21 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
       {pendientes.map((t) => (
         <Tarjeta key={t.id} t={t} ocupada={ocupada === t.id} onEstado={(e) => cambiar(t.id, e)} />
       ))}
+
+      {ceoSinFecha.length > 0 && (
+        <div className="border-t border-edge/60 pt-4 flex flex-col gap-3">
+          <div>
+            <h3 className="text-xs font-semibold text-ink flex items-center gap-1.5">
+              <Bot size={13} className="text-accent" />
+              Para el CEO, sin fecha ({ceoSinFecha.length})
+            </h3>
+            <p className="text-[11px] text-ink-muted mt-0.5">Las hace la próxima vez que abras Claude. No tienes que hacer nada más.</p>
+          </div>
+          {ceoSinFecha.map((t) => (
+            <Tarjeta key={t.id} t={t} ocupada={ocupada === t.id} onEstado={(e) => cambiar(t.id, e)} />
+          ))}
+        </div>
+      )}
 
       {resueltas.length > 0 && (
         <div className="border-t border-edge/60 pt-4">

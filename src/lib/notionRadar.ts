@@ -1,7 +1,7 @@
 import { Client } from '@notionhq/client';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
-// ─── Client — reutiliza el MISMO token que notionCommands.ts (Delegaciones).
+// ─── Client — el mismo token de Notion que el resto del dashboard.
 // No se añade ninguna key nueva. ──────────────────────────────────────────────
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });

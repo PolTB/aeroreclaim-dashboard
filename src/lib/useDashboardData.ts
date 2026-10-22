@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { RadarCaso } from '@/lib/notionRadar';
-import type { AeroCaso, NotionCommand } from '@/types';
-import { normalizeCommandEstado } from '@/types';
+import type { AeroCaso } from '@/types';
 import type { BandejaEstado, BandejaTarea } from '@/lib/bandejaDb';
 import type { FinanzasSnapshot } from '@/lib/finanzas';
 
@@ -14,18 +13,14 @@ export interface DashboardData {
   radar: RadarCaso[];
   /** Casos del Sheet vía GAS — se usan sólo para detectar leads sin ficha en el Radar. */
   sheetCases: AeroCaso[];
-  commands: NotionCommand[];
   bandeja: BandejaTarea[];
   /** Foto de la contabilidad (registro.js → Notion). null hasta que carga. */
   finanzas: FinanzasSnapshot | null;
   loading: boolean;
   refreshing: boolean;
   lastRefresh: Date | null;
-  errors: Partial<Record<'radar' | 'cases' | 'commands' | 'bandeja' | 'finanzas', string>>;
+  errors: Partial<Record<'radar' | 'cases' | 'bandeja' | 'finanzas', string>>;
   refresh: () => void;
-  /** Actualización optimista local de una delegación (evita releer Notion entero). */
-  patchCommand: (id: string, updates: Partial<NotionCommand>) => void;
-  removeCommand: (id: string) => void;
   /** Cambia el estado de una tarea de la Bandeja en Notion (optimista). */
   setBandejaEstado: (id: string, estado: BandejaEstado) => Promise<void>;
 }
@@ -43,7 +38,6 @@ async function getJson(url: string): Promise<unknown> {
 export function useDashboardData(): DashboardData {
   const [radar, setRadar] = useState<RadarCaso[]>([]);
   const [sheetCases, setSheetCases] = useState<AeroCaso[]>([]);
-  const [commands, setCommands] = useState<NotionCommand[]>([]);
   const [bandeja, setBandeja] = useState<BandejaTarea[]>([]);
   const [finanzas, setFinanzas] = useState<FinanzasSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,10 +52,9 @@ export function useDashboardData(): DashboardData {
 
     const nextErrors: DashboardData['errors'] = {};
 
-    const [radarRes, casesRes, commandsRes, bandejaRes, finanzasRes] = await Promise.allSettled([
+    const [radarRes, casesRes, bandejaRes, finanzasRes] = await Promise.allSettled([
       getJson('/api/notion/radar'),
       getJson('/api/cases'),
-      getJson('/api/notion/commands'),
       getJson('/api/notion/bandeja'),
       getJson('/api/finanzas'),
     ]);
@@ -71,11 +64,6 @@ export function useDashboardData(): DashboardData {
 
     if (casesRes.status === 'fulfilled') setSheetCases(((casesRes.value as { cases?: AeroCaso[] }).cases) ?? []);
     else nextErrors.cases = casesRes.reason?.message ?? 'Error cargando el pipeline del Sheet';
-
-    if (commandsRes.status === 'fulfilled') {
-      const raw = ((commandsRes.value as { commands?: NotionCommand[] }).commands) ?? [];
-      setCommands(raw.map((c) => ({ ...c, estado: normalizeCommandEstado(c.estado) })));
-    } else nextErrors.commands = commandsRes.reason?.message ?? 'Error cargando delegaciones';
 
     if (bandejaRes.status === 'fulfilled') {
       setBandeja(((bandejaRes.value as { tareas?: BandejaTarea[] }).tareas) ?? []);
@@ -104,14 +92,6 @@ export function useDashboardData(): DashboardData {
     };
   }, [load]);
 
-  const patchCommand = useCallback((id: string, updates: Partial<NotionCommand>) => {
-    setCommands((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
-  }, []);
-
-  const removeCommand = useCallback((id: string) => {
-    setCommands((prev) => prev.filter((c) => c.id !== id));
-  }, []);
-
   const setBandejaEstado = useCallback(async (id: string, estado: BandejaEstado) => {
     const ahora = new Date().toISOString();
     setBandeja((prev) => prev.map((t) => (t.id === id ? { ...t, estado, hechoEl: estado === 'Pendiente' ? null : ahora, editada: ahora } : t)));
@@ -126,8 +106,8 @@ export function useDashboardData(): DashboardData {
   }, [load]);
 
   return {
-    radar, sheetCases, commands, bandeja, finanzas,
+    radar, sheetCases, bandeja, finanzas,
     loading, refreshing, lastRefresh, errors,
-    refresh: load, patchCommand, removeCommand, setBandejaEstado,
+    refresh: load, setBandejaEstado,
   };
 }

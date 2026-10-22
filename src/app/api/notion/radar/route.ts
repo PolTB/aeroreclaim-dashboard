@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
-  // Timeout de 8s — mismo patrón que /api/notion/tasks y /api/notion/commands
+  // Timeout de 8s
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
 

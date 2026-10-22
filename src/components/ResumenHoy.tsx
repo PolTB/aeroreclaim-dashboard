@@ -3,16 +3,17 @@
 import { CheckCircle2, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { RadarCaso } from '@/lib/notionRadar';
-import type { AeroCaso, NotionCommand } from '@/types';
+import type { AeroCaso } from '@/types';
 import type { BandejaTarea } from '@/lib/bandejaDb';
+import { cuentaEnBandeja } from '@/lib/tareasCeo';
 import { casosActivos, diasHasta, diasSinMovimiento, leadsSinFicha, urgenciaDe } from '@/lib/casos';
 
 // ─── Resumen "Hoy" ────────────────────────────────────────────────────────────
-// Una sola franja, siempre visible sobre las tres pestañas, que responde a la
+// Una sola franja, siempre visible sobre las pestañas, que responde a la
 // única pregunta con la que se abre un dashboard: ¿hay algo que atender?
 // Si no lo hay, lo dice y se calla. Nada de métricas decorativas.
 
-export type Vista = 'casos' | 'delegaciones' | 'bandeja' | 'finanzas';
+export type Vista = 'casos' | 'bandeja' | 'finanzas';
 
 interface Senal {
   id: string;
@@ -24,7 +25,6 @@ interface Senal {
 interface Props {
   radar: RadarCaso[];
   sheetCases: AeroCaso[];
-  commands: NotionCommand[];
   bandeja: BandejaTarea[];
   onIr: (vista: Vista) => void;
 }
@@ -32,12 +32,13 @@ interface Props {
 const plural = (n: number, singular: string, prural: string) => (n === 1 ? singular : prural);
 
 export function construirSenales({
-  radar, sheetCases, commands, bandeja,
+  radar, sheetCases, bandeja,
 }: Omit<Props, 'onIr'>): Senal[] {
   const senales: Senal[] = [];
 
-  // Urgente = fecha límite hoy o ya pasada. El resto, aviso.
-  const pendientes = bandeja.filter((t) => t.estado === 'Pendiente');
+  // Urgente = fecha límite hoy o ya pasada. El resto, aviso. Las tareas del
+  // CEO sin fecha no cuentan: las coge el CEO al abrir sesión.
+  const pendientes = bandeja.filter(cuentaEnBandeja);
   const urgentesBandeja = pendientes.filter((t) => {
     const d = diasHasta(t.fechaLimite);
     return d !== null && d <= 0;
@@ -56,9 +57,6 @@ export function construirSenales({
   }).length;
   const huerfanos = leadsSinFicha(sheetCases, radar).length;
 
-  const porRevisar = commands.filter(
-    (c) => c.estado === 'Respuesta Recibida' || c.estado === 'Bloqueado',
-  ).length;
 
   if (urgentesBandeja) {
     senales.push({
@@ -92,14 +90,6 @@ export function construirSenales({
       destino: 'casos',
     });
   }
-  if (porRevisar) {
-    senales.push({
-      id: 'delegaciones-revisar',
-      tono: 'aviso',
-      texto: `${porRevisar} ${plural(porRevisar, 'delegación espera', 'delegaciones esperan')} tu revisión`,
-      destino: 'delegaciones',
-    });
-  }
   if (huerfanos) {
     senales.push({
       id: 'leads-huerfanos',
@@ -128,8 +118,8 @@ export function ResumenHoy(props: Props) {
       <div className="flex items-center gap-2.5 px-4 py-3 bg-success/8 border border-success/20 rounded-2xl">
         <CheckCircle2 size={15} className="text-success shrink-0" />
         <p className="text-xs text-ink-secondary">
-          <span className="font-medium text-ink">Nada requiere tu atención.</span> Ni fechas vencidas, ni bandeja,
-          ni delegaciones esperando respuesta.
+          <span className="font-medium text-ink">Nada requiere tu atención.</span> Ni fechas vencidas ni tareas en la
+          bandeja.
         </p>
       </div>
     );
