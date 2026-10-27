@@ -524,14 +524,14 @@ export function FinanzasPanel({ finanzas, radar, error, radarError, loading }: {
   const dias = (Date.now() - new Date(finanzas.generado).getTime()) / 86400000;
   return (
     <div className="flex flex-col gap-4">
-      {dias > 40 && (
+      {dias > 9 && (
         <div className="flex items-start gap-2.5 p-3 bg-warn/10 border border-warn/25 rounded-xl text-xs text-ink-secondary">
           <AlertCircle size={14} className="mt-0.5 shrink-0 text-warn" />
           Los números de la contabilidad son del {fechaCorta(finanzas.generado)}: puede faltar lo último.
         </div>
       )}
       <ComoVamos f={finanzas} c={c} />
-      <Prevision c={c} radar={radar} m={m} />
+      <Prevision c={c} radar={radar} m={m} fijos={finanzas.fijos} />
       <Evolucion f={finanzas} m={m} />
       <AgenciasBloque radar={radar} />
       <div className="grid gap-4 lg:grid-cols-2">

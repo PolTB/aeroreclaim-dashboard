@@ -53,12 +53,16 @@ function Mando({ id, etiqueta, valor, texto, min, max, onChange, pista }: {
 /** Valores de los mandos; "firman" y "cobran" van de 0 a 10 ("de cada 10"). */
 interface Mandos { leads: number; firman: number; cobran: number; meses: number }
 
-export function Prevision({ c, radar, m }: { c: CalculoFinanzas; radar: RadarCaso[]; m: Medicion }) {
+export function Prevision({ c, radar, m, fijos }: {
+  c: CalculoFinanzas; radar: RadarCaso[]; m: Medicion; fijos: FinanzasSnapshot['fijos'];
+}) {
+  // Por defecto, lo más parecido a la realidad: lo medido, contando también lo que aún no ha
+  // acabado (leads que ya no firmarán, casos que llevan meses sin cobrar).
   const inicial = useMemo<Mandos>(() => ({
     leads: Math.round(m.ritmoMes),
-    firman: m.conversion != null ? Math.round(m.conversion * 10) : 5,
+    firman: m.conversionReal != null ? Math.round(m.conversionReal * 10) : 5,
     cobran: 7, // supuesto prudente hasta que haya casos cerrados para medirlo
-    meses: 5,  // supuesto: los cobros rápidos tardaron ~3 meses, los de AESA o juzgado bastante más
+    meses: m.mesesCobroReal != null ? Math.min(12, Math.max(3, Math.round(m.mesesCobroReal))) : 6,
   }), [m]);
   // Mientras Pol no toque nada, los mandos siguen a los datos (que se refrescan solos).
   const [tocado, setTocado] = useState<Mandos | null>(null);
@@ -119,20 +123,22 @@ export function Prevision({ c, radar, m }: { c: CalculoFinanzas; radar: RadarCas
           <Mando
             id="prev-firman" etiqueta="De cada 10 leads, firman" valor={v.firman} texto={`${v.firman} de 10`} min={0} max={10}
             onChange={cambia('firman')}
-            pista={m.conversion != null
-              ? <>Medido: firmaron {m.firmados} de {m.firmados + m.perdidos} leads ya decididos{m.abiertos > 0 && <> ({m.abiertos} siguen pendientes)</>}.</>
+            pista={m.conversionReal != null
+              ? <>Medido: firmaron {m.firmados} de {m.decididos} leads{m.abiertosViejos > 0 && <>, contando como perdidos los {m.abiertosViejos} que llevan más de 14 días sin contestar</>}.
+                {m.abiertos - m.abiertosViejos > 0 && <> Otros {m.abiertos - m.abiertosViejos} aún están a tiempo.</>}</>
               : <>Supuesto: aún no hay leads decididos.</>}
           />
           <Mando
             id="prev-cobran" etiqueta="De cada 10 que firman, cobran" valor={v.cobran} texto={`${v.cobran} de 10`} min={0} max={10}
             onChange={cambia('cobran')}
-            pista={<>Supuesto: con {plural(m.cobrados, 'cobro', 'cobros')} hasta ahora todavía no se puede medir.</>}
+            pista={<>Supuesto prudente: con {plural(m.cobrados, 'cobro', 'cobros')} hasta ahora aún no se puede medir.</>}
           />
           <Mando
             id="prev-meses" etiqueta="Meses hasta cobrar" valor={v.meses} texto={plural(v.meses, 'mes', 'meses')} min={1} max={12}
             onChange={cambia('meses')}
-            pista={m.mesesCobroMedido != null
-              ? <>Supuesto. {m.cobrados === 1 ? 'El cobro de este año llegó' : `Los ${m.cobrados} cobros de este año llegaron`} a los {entero(m.mesesCobroMedido)} meses de entrar el lead; los que van a AESA o al juzgado tardan más.</>
+            pista={m.mesesCobroReal != null
+              ? <>Medido. {m.cobrados > 0 && <>{m.cobrados === 1 ? 'El cobro de este año llegó' : `Los ${m.cobrados} cobros de este año llegaron`} a los {entero(m.mesesCobroMedido ?? 0)} meses de entrar el lead.</>}
+                {m.esperando > 0 && <> {m.esperando === 1 ? 'Hay 1 caso firmado que lleva' : `Hay ${m.esperando} casos firmados que llevan`} hasta {entero(m.esperandoMax ?? 0)} meses sin cobrar, y también cuentan.</>}</>
               : <>Supuesto: aún no hay cobros para medirlo.</>}
           />
         </div>
@@ -198,7 +204,8 @@ export function Prevision({ c, radar, m }: { c: CalculoFinanzas; radar: RadarCas
               {x.cobranEnMarcha > 0 && (x.cobranEnMarcha < x.cobran - 0.05
                 ? <> ({aprox(x.cobranEnMarcha)} de casos que ya existen)</>
                 : <>, todos de casos que ya existen</>)}.
-              Entra <b className="text-ink">{euros(x.ingresos)}</b>, sale <b className="text-ink">{euros(x.gastos)}</b>.
+              Entra <b className="text-ink">{euros(x.ingresos)}</b>. Sale <b className="text-ink">{euros(x.gastos)}</b>: {euros(x.gastoFijo)} de
+              gastos fijos{x.gastoBurofax >= 1 && <> y {euros(x.gastoBurofax)} de burofax de los que firman ({euros(c.costePorPasajero ?? 0)} cada uno)</>}.
             </p>
             <Columnas
               n={filas.length} sel={sel} onSel={setSel}
@@ -209,14 +216,26 @@ export function Prevision({ c, radar, m }: { c: CalculoFinanzas; radar: RadarCas
                 <span className="w-2 sm:w-3 bg-serie-sale rounded-t" style={{ height: alto(filas[i].gastos) }} />
               </>}
             />
-            <p className="text-[10px] text-ink-muted mt-1.5">
-              Los primeros meses solo cobran los casos que ya están en marcha: un lead nuevo tarda {plural(v.meses, 'mes', 'meses')} en cobrarse.
+            <p className="text-[10px] text-ink-muted mt-1.5 leading-relaxed">
+              Gastos fijos de cada mes ({euros(c.fijoMes)}):{' '}
+              {[...fijos].sort((a, b) => b.importe - a.importe).map((g) => `${g.nombre} ${euros(g.importe)}`).join(' · ')}.
+              {' '}Los primeros meses solo cobran los casos que ya están en marcha: un lead nuevo tarda {plural(v.meses, 'mes', 'meses')} en cobrarse.
             </p>
           </div>
 
           {/* Acumulado */}
           <div className="mt-4 pt-3 border-t border-edge/50">
-            <p className="text-[11px] font-medium text-ink">Cómo va la cuenta del negocio</p>
+            <p className="text-[11px] font-medium text-ink">Cuándo recuperas lo invertido</p>
+            <p className="text-xs text-ink-secondary mt-1.5 leading-relaxed">
+              Cada barra es todo lo ganado menos todo lo gastado desde enero de 2026, hasta final de ese mes.{' '}
+              {c.resultado < 0
+                ? <>Hoy llevas {euros(-c.resultado)} invertidos.</>
+                : <>Hoy llevas {euros(c.resultado)} ganados.</>}
+              {p.fondo && <> Mientras los gastos superen a los cobros la barra baja: lo peor llega en {mesConAño(p.fondo.mes)} ({conSigno(p.fondo.acumulado)}).</>}
+              {c.resultado < 0 && (p.mesRecupera
+                ? <> Después remonta y en <b className="text-ink">{mesConAño(p.mesRecupera)}</b> ya has recuperado todo.</>
+                : <> En estos 12 meses no llega a recuperarse.</>)}
+            </p>
             <p className="text-xs text-ink-secondary mt-1.5 min-h-4">
               {selAc === 0
                 ? <><span className="text-ink font-medium">Hoy</span>: {conSigno(c.resultado)} ({c.resultado < 0 ? 'lo invertido hasta ahora' : 'lo ganado este año'}).</>
@@ -228,7 +247,7 @@ export function Prevision({ c, radar, m }: { c: CalculoFinanzas; radar: RadarCas
               aria={(i) => `${i === 0 ? 'Hoy' : mesConAño(filas[i - 1].mes)}: ${conSigno(acumulados[i])}`}
               pinta={(i) => <BarraCeroVertical valor={acumulados[i]} lo={ac.lo} hi={ac.hi} className={i === 0 ? 'opacity-60' : undefined} />}
             />
-            <p className="text-[10px] text-ink-muted mt-1.5">Por encima de la raya, el negocio gana dinero; por debajo, aún pierde.</p>
+            <p className="text-[10px] text-ink-muted mt-1.5">Naranja, por debajo de la raya: aún no has recuperado lo invertido. Azul, por encima: ya lo has recuperado y ganas.</p>
           </div>
         </div>
       </div>

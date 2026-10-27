@@ -89,12 +89,30 @@ export function medir(radar: RadarCaso[], f: FinanzasSnapshot, hoy = new Date())
   const firmados = leads.filter((l) => l.estado === 'firmado').length;
   const perdidos = leads.filter((l) => l.estado === 'perdido').length;
   const conversion = firmados + perdidos > 0 ? firmados / (firmados + perdidos) : null;
+  // Versión realista para la previsión: un lead que lleva más de 14 días sin firmar ya no firma
+  // (la cadencia lo da por perdido ese día), aunque en el Radar siga abierto.
+  const abiertosViejos = leads.filter((l) => l.estado === 'abierto' && l.fecha <= hace(14)).length;
+  const decididos = firmados + perdidos + abiertosViejos;
+  const conversionReal = decididos > 0 ? firmados / decididos : null;
 
   // Cuánto se tarda en cobrar: de la entrada del lead a la última actividad de los ya cobrados.
   const cobrados = radar.filter((c) => c.etapa === 'Cobrado' && c.ultimaActividad);
   const mesesCobroMedido = cobrados.length
     ? suma(cobrados.map((c) => (dia(c.ultimaActividad!).getTime() - dia(fechaEntrada(c)).getTime()) / DIA / MES)) / cobrados.length
     : null;
+  // Versión realista: los firmados que siguen sin cobrar y ya pasan de ese plazo también cuentan,
+  // con lo que llevan esperando más un mes (aún no han cobrado). Si no, solo cuentan los rápidos.
+  const plazoVisto = mesesCobroMedido ?? 3;
+  const esperando = radar
+    .filter((c) => !c.cerrado && estadoDe(c) === 'firmado')
+    .map((c) => (hoy.getTime() - dia(fechaEntrada(c)).getTime()) / DIA / MES)
+    .filter((e) => e > plazoVisto);
+  const tiempos = [
+    ...cobrados.map((c) => (dia(c.ultimaActividad!).getTime() - dia(fechaEntrada(c)).getTime()) / DIA / MES),
+    ...esperando.map((e) => e + 1),
+  ];
+  const mesesCobroReal = tiempos.length ? suma(tiempos) / tiempos.length : null;
+  const esperandoMax = esperando.length ? Math.max(...esperando) : null;
 
   // Google Ads: cuánto cuesta cada lead de Google con el presupuesto de ahora. Solo cuenta los
   // días en que ya se pagaba ese importe (`desde`), como mucho 28; con menos de 7 no se mide.
@@ -133,8 +151,8 @@ export function medir(radar: RadarCaso[], f: FinanzasSnapshot, hoy = new Date())
 
   return {
     total: leads.length, ult28: ult28.length, ult7: ult7.length, ritmoMes, ritmoSemana, origen28,
-    firmados, perdidos, abiertos: leads.length - firmados - perdidos, conversion,
-    cobrados: cobrados.length, mesesCobroMedido,
+    firmados, perdidos, abiertos: leads.length - firmados - perdidos, conversion, abiertosViejos, decididos, conversionReal,
+    cobrados: cobrados.length, mesesCobroMedido, esperando: esperando.length, esperandoMax, mesesCobroReal,
     google, meses, semanas,
   };
 }
@@ -173,6 +191,9 @@ export interface MesPrevisto {
   cobranEnMarcha: number;
   ingresos: number;
   gastos: number;
+  /** De los gastos: lo fijo de cada mes y el burofax de los que firman. */
+  gastoFijo: number;
+  gastoBurofax: number;
   resultado: number;
   acumulado: number;
 }
@@ -182,7 +203,7 @@ export function proyectar(s: Supuestos, b: Base, hoy = new Date(), n = 12) {
   const ymHoy = iso(hoy).slice(0, 7);
   const M = Math.max(1, Math.round(s.mesesCobro));
   const filas: MesPrevisto[] = Array.from({ length: n }, (_, i) => ({
-    mes: sumarMeses(ymHoy, i + 1), leads: 0, firman: 0, cobran: 0, cobranEnMarcha: 0, ingresos: 0, gastos: b.fijoMes, resultado: 0, acumulado: 0,
+    mes: sumarMeses(ymHoy, i + 1), leads: 0, firman: 0, cobran: 0, cobranEnMarcha: 0, ingresos: 0, gastos: b.fijoMes, gastoFijo: b.fijoMes, gastoBurofax: 0, resultado: 0, acumulado: 0,
   }));
   // Un cobro no llega el mes exacto: se reparte entre el mes previsto (la mitad) y el de antes y
   // el de después (un cuarto cada uno). Si no, salen meses a 0 € que solo son un efecto del cálculo.
@@ -208,6 +229,7 @@ export function proyectar(s: Supuestos, b: Base, hoy = new Date(), n = 12) {
       // Lead abierto: firma ahora (o no) y se reclama a partir del mes que viene.
       filas[0].firman += s.firman;
       filas[0].gastos += s.firman * b.costePorPasajero;
+      filas[0].gastoBurofax += s.firman * b.costePorPasajero;
       cobrar(M, s.firman * s.cobran, comisionDe(c), true);
     }
   });
@@ -218,6 +240,7 @@ export function proyectar(s: Supuestos, b: Base, hoy = new Date(), n = 12) {
     x.leads += s.leadsMes;
     x.firman += firman;
     x.gastos += firman * b.costePorPasajero;
+    x.gastoBurofax += firman * b.costePorPasajero;
     cobrar(i + 1 + M, firman * s.cobran, b.comisionMedia, false);
   });
 
@@ -234,6 +257,8 @@ export function proyectar(s: Supuestos, b: Base, hoy = new Date(), n = 12) {
   // Desde qué mes se cubren los gastos todos los meses (no solo uno suelto).
   const idxCubre = filas.findIndex((_, i) => filas.slice(i).every((x) => x.ingresos >= x.gastos));
   const idxRecupera = filas.findIndex((x) => x.acumulado >= 0);
+  // El mes en que la cuenta toca fondo, si baja de lo de hoy.
+  const fondo = filas.reduce((a, x) => (x.acumulado < a.acumulado ? x : a), filas[0]);
 
   return {
     filas,
@@ -249,5 +274,6 @@ export function proyectar(s: Supuestos, b: Base, hoy = new Date(), n = 12) {
     mesCubre: idxCubre >= 0 ? filas[idxCubre].mes : null,
     mesRecupera: b.resultadoHoy >= 0 ? null : idxRecupera >= 0 ? filas[idxRecupera].mes : null,
     final: acumulado,
+    fondo: fondo.acumulado < b.resultadoHoy ? { mes: fondo.mes, acumulado: fondo.acumulado } : null,
   };
 }
