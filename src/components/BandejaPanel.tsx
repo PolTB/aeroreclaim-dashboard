@@ -381,7 +381,9 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
           Tu bandeja
         </h2>
         <p className="text-xs text-ink-muted mt-1">
-          {pendientes.length === 0
+          {error && pendientes.length === 0
+            ? 'Ahora mismo no se puede saber qué hay pendiente.'
+            : pendientes.length === 0
             ? 'Nada pendiente. El resto lo llevan los agentes.'
             : `${pendientes.length} ${pendientes.length === 1 ? 'tarea' : 'tareas'}, la más urgente primero. Las que dicen "Para el CEO" las hace Claude: solo tienes que abrirlo.`}
         </p>
@@ -389,7 +391,9 @@ export function BandejaPanel({ tareas, error, loading, onEstado }: Props) {
 
       {error && (
         <div className="p-3 bg-danger/10 border border-danger/25 rounded-xl text-xs text-danger">
-          No se ha podido leer la bandeja: {error}
+          {/rate limit/i.test(error)
+            ? 'Notion está recibiendo demasiadas peticiones y no ha dejado leer la bandeja. Se vuelve a intentar solo cada 3 minutos, o pulsa Actualizar dentro de un minuto.'
+            : `No se ha podido leer la bandeja: ${error}`}
         </div>
       )}
 

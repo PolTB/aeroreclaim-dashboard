@@ -1,4 +1,4 @@
-import { Client } from '@notionhq/client';
+import { notionClient } from '@/lib/notionClient';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
 // ─── Bandeja de Pol (v2) — base de datos estructurada ────────────────────────
@@ -8,7 +8,7 @@ import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoint
 // lo que tenía que hacer. Ahora cada fila es una tarea con campos fijos:
 // qué hacer (una frase), por qué, cómo (pasos), caso, dinero y fecha límite.
 
-const notion = new Client({ auth: process.env.NOTION_CEO_TOKEN ?? process.env.NOTION_TOKEN });
+const notion = notionClient(process.env.NOTION_CEO_TOKEN ?? process.env.NOTION_TOKEN);
 
 // El ID de una DB no es secreto: fallback al literal para no depender de una
 // variable de entorno más en Vercel.

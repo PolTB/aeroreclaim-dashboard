@@ -1,10 +1,10 @@
-import { Client } from '@notionhq/client';
+import { notionClient } from '@/lib/notionClient';
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
 // ─── Client — el mismo token de Notion que el resto del dashboard.
 // No se añade ninguna key nueva. ──────────────────────────────────────────────
 
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+const notion = notionClient(process.env.NOTION_TOKEN);
 
 // DB ID no es secreto (a diferencia del token) — fallback al literal conocido
 // si no se configura RADAR_DATABASE_ID en Vercel, para evitar fricción de deploy.

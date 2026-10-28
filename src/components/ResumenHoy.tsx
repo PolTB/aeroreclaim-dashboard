@@ -26,6 +26,8 @@ interface Props {
   radar: RadarCaso[];
   sheetCases: AeroCaso[];
   bandeja: BandejaTarea[];
+  /** Si no se ha podido leer la Bandeja o el Radar, no se dice "nada que atender". */
+  errors?: Partial<Record<string, string>>;
   onIr: (vista: Vista) => void;
 }
 
@@ -112,6 +114,18 @@ export function construirSenales({
 
 export function ResumenHoy(props: Props) {
   const senales = construirSenales(props);
+  const sinLeer = props.errors?.bandeja || props.errors?.radar;
+
+  if (senales.length === 0 && sinLeer) {
+    return (
+      <div className="px-4 py-3 bg-warn/10 border border-warn/25 rounded-2xl">
+        <p className="text-xs text-ink-secondary">
+          <span className="font-medium text-ink">No se ha podido leer todo.</span> Hasta que cargue, no se sabe si hay
+          algo que atender.
+        </p>
+      </div>
+    );
+  }
 
   if (senales.length === 0) {
     return (

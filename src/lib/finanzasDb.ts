@@ -1,7 +1,7 @@
-import { Client } from '@notionhq/client';
+import { notionClient } from '@/lib/notionClient';
 import type { FinanzasSnapshot } from '@/lib/finanzas';
 
-const notion = new Client({ auth: process.env.NOTION_CEO_TOKEN ?? process.env.NOTION_TOKEN });
+const notion = notionClient(process.env.NOTION_CEO_TOKEN ?? process.env.NOTION_TOKEN);
 
 // Página privada "💶 Finanzas · datos para el dashboard" (16/10/2026). El ID no
 // es secreto sin el token, mismo criterio que los IDs de las bases de datos.
