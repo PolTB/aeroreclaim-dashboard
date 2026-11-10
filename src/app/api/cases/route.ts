@@ -1,7 +1,5 @@
-import { list, put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import type { AeroCaso, PipelineStage } from '@/types';
-import { trackEvent } from '@/lib/analytics';
 
 // ─── AER-215 fix: forzar ejecución dinámica ───────────────────────────────────
 // ANTES: sin 'export const dynamic', Next.js detectaba el fetch() interno con
@@ -545,56 +543,6 @@ async function fetchFromSheets(): Promise<AeroCaso[] | null> {
   }
 }
 
-// ─── State diffing via Vercel Blob ────────────────────────────────────────────
-
-const STATE_BLOB_PATH = 'analytics/cases-state.json';
-type CaseSnapshot = Record<string, { estadoActual: string }>;
-
-function airlineCode(vuelo: string): string {
-  return vuelo.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase();
-}
-
-async function loadPreviousState(): Promise<CaseSnapshot> {
-  try {
-    const { blobs } = await list({ prefix: STATE_BLOB_PATH });
-    if (!blobs.length) return {};
-    const res = await fetch(blobs[0].url);
-    if (!res.ok) return {};
-    return (await res.json()) as CaseSnapshot;
-  } catch {
-    return {};
-  }
-}
-
-async function saveState(cases: AeroCaso[]): Promise<void> {
-  try {
-    const snapshot: CaseSnapshot = Object.fromEntries(
-      cases.map(c => [c.id, { estadoActual: c.estadoActual }])
-    );
-    await put(STATE_BLOB_PATH, JSON.stringify(snapshot), { access: 'public', addRandomSuffix: false });
-  } catch (err) {
-    console.error('[cases] saveState failed:', err);
-  }
-}
-
-async function diffAndTrack(prev: CaseSnapshot, current: AeroCaso[]): Promise<void> {
-  for (const caso of current) {
-    const prevState = prev[caso.id];
-    if (!prevState) {
-      await trackEvent('case_created', { event_category: 'funnel', case_id: caso.id, airline_code: airlineCode(caso.vuelo), flight_number: caso.vuelo });
-      continue;
-    }
-    if (prevState.estadoActual === caso.estadoActual) continue;
-    if (caso.estadoActual === 'Respuesta Aerolínea') {
-      const stage = caso.pipeline['Respuesta Aerolínea'];
-      await trackEvent('airline_response', { event_category: 'funnel', case_id: caso.id, airline_code: airlineCode(caso.vuelo), outcome: stage?.confirmacionAgente ? 'accept' : 'no_response' });
-    }
-    if (caso.estadoActual === 'Cobro' || caso.estadoActual === 'Cerrado') {
-      await trackEvent('case_closed', { event_category: 'funnel', case_id: caso.id, airline_code: airlineCode(caso.vuelo), compensation_amount: caso.compensacion, stage: caso.estadoActual });
-    }
-  }
-}
-
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function GET() {
@@ -602,9 +550,6 @@ export async function GET() {
     const sheetsCases = await fetchFromSheets();
     const cases  = sheetsCases ?? FALLBACK_CASES;
     const source = sheetsCases ? 'sheets' : 'fallback';
-
-    void loadPreviousState().then(prev => diffAndTrack(prev, cases)).catch(() => {});
-    void saveState(cases).catch(() => {});
 
     // AER-215: no-store explícito — defensa adicional independiente de force-dynamic
     return NextResponse.json(
